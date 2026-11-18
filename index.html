@@ -424,6 +424,10 @@
         <span class="small text-secondary d-none d-sm-inline text-white-50">Stock Opname System</span>
       </div>
       <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-success-subtle text-success border border-success-subtle d-none align-items-center gap-1 py-1 px-2"
+              id="sync-status-badge" style="font-size: 0.75rem; cursor: pointer;" onclick="processSyncQueue()" title="Status sinkronisasi ke Google Sheets">
+          <i class="bi bi-cloud-check-fill"></i><span>Tersimpan</span>
+        </span>
         <button class="btn btn-sm btn-outline-warning position-relative d-none" id="btn-nav-unknown" onclick="switchTab('admin')">
           <i class="bi bi-exclamation-triangle-fill me-1"></i>
           <span class="d-none d-sm-inline">Tidak Terdaftar</span>
@@ -602,6 +606,11 @@
                     </button>
                   </div>
                 </form>
+
+                <!-- Status Cek Barcode Non-Blocking -->
+                <div id="scan-inline-status" class="small text-primary fw-semibold d-none mb-2">
+                  <span class="spinner-border spinner-border-sm me-1"></span><span id="scan-inline-text">Mengecek barcode...</span>
+                </div>
 
                 <!-- Alert Barcode Ditolak (Tidak Terdaftar) -->
                 <div id="scan-reject-box" class="reject-banner d-none mb-3">
@@ -1201,9 +1210,13 @@
   const APP = {
     raks: [],
     masterData: [],
+    masterMap: {},
     rekap: { rows: [], summary: {} },
     details: [],
     unknowns: [],
+    syncQueue: [],
+    isSyncingQueue: false,
+    syncRetryTimer: null,
     selectedRak: '',
     activeScanItem: null,
     parsedUploadRows: [],
@@ -1250,14 +1263,33 @@
       if (hdrStart) hdrStart.classList.add('d-none');
     }
 
-    // Muat cache instan (<50ms) agar layar langsung terbuka tanpa menunggu loading!
+    // Muat antrean sync yang belum terkirim + cache instan (<50ms)
+    loadSyncQueue();
     const hasCache = loadStateFromCache();
     if (hasCache) {
+      rebuildMasterMap();
+      mergeUnsyncedQueueIntoDetails();
+      recomputeClientStats();
       renderAll();
       refreshAllData(true); // sinkronkan terbaru di background tanpa menutupi layar
     } else {
       refreshAllData(false);
     }
+
+    if (APP.syncQueue.length > 0) {
+      processSyncQueue();
+    }
+
+    window.addEventListener('online', () => {
+      if (APP.syncQueue.length > 0) processSyncQueue();
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+      if (APP.syncQueue.length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    });
   });
 
   function callServer(fnName, ...args) {
@@ -1384,6 +1416,189 @@
   }
 
   const CACHE_KEY = 'OPNAME_CACHE_V1';
+  const SYNC_QUEUE_KEY = 'OPNAME_SYNC_QUEUE_V1';
+
+  function rebuildMasterMap() {
+    const map = {};
+    (APP.masterData || []).forEach(m => {
+      if (m && m.barcode) map[m.barcode] = m;
+    });
+    APP.masterMap = map;
+  }
+
+  function loadSyncQueue() {
+    try {
+      const raw = localStorage.getItem(SYNC_QUEUE_KEY);
+      APP.syncQueue = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(APP.syncQueue)) APP.syncQueue = [];
+    } catch (e) {
+      APP.syncQueue = [];
+    }
+    updateSyncBadge();
+  }
+
+  function saveSyncQueue() {
+    try {
+      localStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(APP.syncQueue));
+    } catch (e) {}
+    updateSyncBadge();
+  }
+
+  function updateSyncBadge(stateText) {
+    const badge = document.getElementById('sync-status-badge');
+    if (!badge) return;
+    const pending = APP.syncQueue.length;
+    if (pending > 0) {
+      badge.className = 'badge bg-warning text-dark d-inline-flex align-items-center gap-1 py-1 px-2';
+      badge.innerHTML = APP.isSyncingQueue
+        ? '<span class="spinner-border spinner-border-sm" style="width:11px;height:11px;"></span><span>Simpan ' + pending + '...</span>'
+        : '<i class="bi bi-cloud-arrow-up-fill"></i><span>Antrean ' + pending + '</span>';
+    } else if (stateText === 'saved') {
+      badge.className = 'badge bg-success-subtle text-success border border-success-subtle d-inline-flex align-items-center gap-1 py-1 px-2';
+      badge.innerHTML = '<i class="bi bi-cloud-check-fill"></i><span>Tersimpan</span>';
+    } else {
+      badge.classList.add('d-none');
+      badge.classList.remove('d-inline-flex');
+    }
+  }
+
+  function mergeUnsyncedQueueIntoDetails() {
+    if (!APP.syncQueue.length) return;
+    const existingIds = new Set(APP.details.map(d => d.id_scan));
+    const rekapBarcodes = new Set(((APP.rekap && APP.rekap.rows) || []).map(r => r.barcode));
+
+    APP.syncQueue.forEach(item => {
+      if (!existingIds.has(item.id_scan)) {
+        APP.details.push({
+          no: APP.details.length + 1,
+          id_scan: item.id_scan,
+          timestamp: item.timestamp,
+          rak: item.rak,
+          barcode: item.barcode,
+          nama_barang: item.nama_barang || '-',
+          qty_fisik: item.qty_fisik,
+          keterangan: item.keterangan || ''
+        });
+        existingIds.add(item.id_scan);
+      }
+      if (!rekapBarcodes.has(item.barcode)) {
+        if (!APP.rekap || !Array.isArray(APP.rekap.rows)) APP.rekap = { rows: [], summary: {} };
+        const m = APP.masterMap[item.barcode] || null;
+        APP.rekap.rows.push({
+          no: APP.rekap.rows.length + 1,
+          barcode: item.barcode,
+          nama_barang: (m && m.nama_barang) || item.nama_barang || '-',
+          kategori: (m && m.kategori) || '-',
+          harga: 0,
+          qty_sistem: 0
+        });
+        rekapBarcodes.add(item.barcode);
+      }
+    });
+  }
+
+  function localTimestampNow() {
+    const d = new Date();
+    const p = n => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
+           p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+  }
+
+  /**
+   * Simpan scan INSTAN (0ms tanpa loading!) lalu kirim batch ke Google Sheets di background
+   */
+  function enqueueScanSave(foundItem, qty, ket) {
+    const idScan = 'SC-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    const ts = localTimestampNow();
+    const entry = {
+      id_scan: idScan,
+      timestamp: ts,
+      rak: APP.selectedRak,
+      barcode: foundItem.barcode,
+      nama_barang: foundItem.nama_barang || '-',
+      qty_fisik: qty,
+      keterangan: ket || ''
+    };
+
+    // 1. Update UI lokal INSTAN (<2ms)
+    APP.details.push({
+      no: APP.details.length + 1,
+      id_scan: entry.id_scan,
+      timestamp: entry.timestamp,
+      rak: entry.rak,
+      barcode: entry.barcode,
+      nama_barang: entry.nama_barang,
+      qty_fisik: entry.qty_fisik,
+      keterangan: entry.keterangan
+    });
+
+    if (!APP.rekap || !Array.isArray(APP.rekap.rows)) {
+      APP.rekap = { rows: [], summary: {} };
+    }
+    if (!APP.rekap.rows.some(r => r.barcode === foundItem.barcode)) {
+      APP.rekap.rows.push({
+        no: APP.rekap.rows.length + 1,
+        barcode: foundItem.barcode,
+        nama_barang: foundItem.nama_barang || '-',
+        kategori: foundItem.kategori || '-',
+        harga: 0,
+        qty_sistem: 0
+      });
+    }
+
+    recomputeClientStats();
+    renderAll();
+
+    // 2. Masukkan ke antrean background & langsung jalankan sync tanpa ganggu layar
+    APP.syncQueue.push(entry);
+    saveSyncQueue();
+    processSyncQueue();
+  }
+
+  async function processSyncQueue() {
+    if (APP.isSyncingQueue || APP.syncQueue.length === 0) {
+      if (APP.syncQueue.length === 0) updateSyncBadge('saved');
+      return;
+    }
+
+    if (APP.syncRetryTimer) {
+      clearTimeout(APP.syncRetryTimer);
+      APP.syncRetryTimer = null;
+    }
+
+    APP.isSyncingQueue = true;
+    updateSyncBadge();
+
+    // Ambil snapshot batch saat ini
+    const batch = APP.syncQueue.slice(0, 25);
+    try {
+      const res = await callServer('saveOpnameScanBatch', batch);
+      if (res && res.success) {
+        const doneSet = new Set(res.savedIds || []);
+        (res.rejected || []).forEach(r => doneSet.add(r.id_scan));
+        APP.syncQueue = APP.syncQueue.filter(it => !doneSet.has(it.id_scan));
+        saveSyncQueue();
+      } else {
+        throw new Error((res && res.message) || 'Gagal sync batch');
+      }
+    } catch (err) {
+      // Jadwalkan retry otomatis 4 detik lagi tanpa ganggu user yang sedang scan
+      APP.syncRetryTimer = setTimeout(() => {
+        APP.syncRetryTimer = null;
+        processSyncQueue();
+      }, 4000);
+    } finally {
+      APP.isSyncingQueue = false;
+      if (APP.syncQueue.length > 0 && !APP.syncRetryTimer) {
+        // Masih ada scan baru yang masuk saat batch tadi sedang dikirim -> langsung kirim lagi
+        setTimeout(() => processSyncQueue(), 50);
+      } else if (APP.syncQueue.length === 0) {
+        updateSyncBadge('saved');
+      } else {
+        updateSyncBadge();
+      }
+    }
+  }
 
   function saveStateToCache() {
     try {
@@ -1525,9 +1740,11 @@
       const state = await callServer('getInitialState');
       APP.raks = state.raks || [];
       APP.masterData = state.masterData || [];
+      rebuildMasterMap();
       APP.rekap = state.rekap || { rows: [], summary: {} };
       APP.details = state.details || [];
       APP.unknowns = state.unknowns || [];
+      mergeUnsyncedQueueIntoDetails();
       recomputeClientStats();
       saveStateToCache();
       renderAll();
@@ -1541,6 +1758,7 @@
   }
 
   function renderAll() {
+    rebuildMasterMap();
     saveStateToCache();
     renderRakDropdowns();
     renderAdminRakTable();
@@ -1920,10 +2138,11 @@
       }
 
       const config = {
-        fps: 12,
+        fps: 20,
+        disableFlip: false,
         qrbox: function(viewfinderWidth, viewfinderHeight) {
-          const w = Math.max(200, Math.floor(viewfinderWidth * 0.90));
-          const h = Math.max(110, Math.floor(Math.min(viewfinderHeight * 0.55, 210)));
+          const w = Math.max(210, Math.floor(viewfinderWidth * 0.92));
+          const h = Math.max(120, Math.floor(Math.min(viewfinderHeight * 0.58, 220)));
           return { width: w, height: h };
         },
         formatsToSupport: BARCODE_FORMATS,
@@ -1937,7 +2156,7 @@
       const onDecoded = (decodedText) => {
         const now = Date.now();
         if (APP.isCheckingBarcode || APP.cameraPaused) return;
-        if (decodedText === APP.lastScannedCode && (now - APP.lastScannedAt) < 1800) {
+        if (decodedText === APP.lastScannedCode && (now - APP.lastScannedAt) < 1200) {
           return;
         }
         APP.lastScannedCode = decodedText;
@@ -1949,11 +2168,10 @@
       try {
         await APP.html5QrCode.start({ facingMode: 'environment' }, config, onDecoded, () => {});
       } catch (envErr) {
-        // Fallback tanpa videoConstraints tinggi jika kamera HP menolak resolusi ideal
         const simpleConfig = {
-          fps: 10,
+          fps: 18,
           qrbox: function(vw, vh) {
-            return { width: Math.max(180, Math.floor(vw * 0.88)), height: Math.max(100, Math.floor(Math.min(vh * 0.52, 190))) };
+            return { width: Math.max(190, Math.floor(vw * 0.90)), height: Math.max(110, Math.floor(Math.min(vh * 0.55, 200))) };
           },
           formatsToSupport: BARCODE_FORMATS
         };
@@ -1968,6 +2186,11 @@
           await APP.html5QrCode.start(backCam.id, simpleConfig, onDecoded, () => {});
         }
       }
+
+      // Aktifkan autofocus kontinu jika didukung kamera HP agar barcode 1D cepat fokus & terbaca
+      try {
+        await APP.html5QrCode.applyVideoConstraints({ advanced: [{ focusMode: 'continuous' }] });
+      } catch (focusErr) {}
 
       APP.cameraRunning = true;
       APP.cameraPaused = false;
@@ -2062,6 +2285,18 @@
     renderAll();
   }
 
+  function setInlineScanStatus(text) {
+    const el = document.getElementById('scan-inline-status');
+    const txt = document.getElementById('scan-inline-text');
+    if (!el) return;
+    if (text) {
+      if (txt) txt.textContent = text;
+      el.classList.remove('d-none');
+    } else {
+      el.classList.add('d-none');
+    }
+  }
+
   async function processBarcodeLookup(barcode) {
     if (!APP.selectedRak) {
       playBeep('error');
@@ -2077,17 +2312,19 @@
     hideRejectBox();
 
     try {
-      // 1. Cek INSTAN di memori Master Data lokal (0 ms tanpa loading!)
-      let foundItem = APP.masterData.find(m => m.barcode === cleanCode) || null;
+      // 1. Lookup O(1) INSTAN di hash map Master Data lokal (0 ms tanpa loading!)
+      let foundItem = APP.masterMap[cleanCode] || null;
 
-      // 2. Hanya tanya server jika tidak ada di cache lokal (antisipasi admin baru tambah master)
+      // 2. Hanya cek server (non-blocking inline) jika tidak ada di cache lokal
       if (!foundItem) {
-        showLoader('Cek barcode ' + cleanCode + '...');
+        pauseCameraIfRunning();
+        setInlineScanStatus('Cek barcode ' + cleanCode + ' di server...');
         const res = await callServer('checkBarcodeForScan', cleanCode, APP.selectedRak);
-        hideLoader();
+        setInlineScanStatus('');
 
         if (!res.success) {
           playBeep('error');
+          resumeCameraIfPaused();
           showToast(res.message || 'Gagal cek barcode.', 'warning');
           return;
         }
@@ -2109,31 +2346,20 @@
 
         foundItem = res.item;
         APP.masterData.push(foundItem);
+        APP.masterMap[foundItem.barcode] = foundItem;
         saveStateToCache();
       }
 
-      // Barcode terdaftar -> langsung respon instan!
+      // Barcode terdaftar -> RESPON INSTAN 0 ms!
       playBeep('ok');
       const autoPlus1 = document.getElementById('scan-auto-plus1').checked;
 
       if (autoPlus1) {
-        // Mode cepat: simpan Qty = 1 langsung
-        showLoader('Menyimpan +1 (' + foundItem.barcode + ')...');
-        const saveRes = await callServer('saveOpnameScan', {
-          rak: APP.selectedRak,
-          barcode: foundItem.barcode,
-          qty_fisik: 1,
-          keterangan: ''
-        });
-        if (saveRes.success) {
-          applyScanDelta(saveRes);
-          showToast(saveRes.message, 'success');
-          document.getElementById('scan-barcode-input').value = '';
-          document.getElementById('scan-barcode-input').focus();
-        } else {
-          playBeep('error');
-          showToast(saveRes.message, 'danger');
-        }
+        // Mode cepat (+1): simpan INSTAN tanpa loading, kirim ke Sheets di background!
+        enqueueScanSave(foundItem, 1, '');
+        showToast('+1 ' + foundItem.nama_barang, 'success');
+        document.getElementById('scan-barcode-input').value = '';
+        resumeCameraIfPaused();
       } else {
         // Mode input manual qty (INSTAN 0 ms!)
         pauseCameraIfRunning();
@@ -2150,14 +2376,15 @@
       }
     } catch (err) {
       playBeep('error');
+      resumeCameraIfPaused();
       showToast('Error: ' + (err.message || err), 'danger');
     } finally {
       APP.isCheckingBarcode = false;
-      hideLoader();
+      setInlineScanStatus('');
     }
   }
 
-  async function handleSaveScanSubmit(e) {
+  function handleSaveScanSubmit(e) {
     e.preventDefault();
     if (!APP.activeScanItem || !APP.selectedRak) return;
 
@@ -2169,42 +2396,14 @@
       return;
     }
 
-    showLoader('Menyimpan...');
-    try {
-      const res = await callServer('saveOpnameScan', {
-        rak: APP.selectedRak,
-        barcode: APP.activeScanItem.barcode,
-        qty_fisik: qty,
-        keterangan: ket
-      });
-
-      if (!res.success) {
-        playBeep('error');
-        if (res.rejected) {
-          showRejectBox(res.message);
-          if (res.unknowns) {
-            APP.unknowns = res.unknowns;
-            renderUnknownTable();
-            updateUnknownBadges();
-          }
-        } else {
-          showToast(res.message, 'danger');
-        }
-        return;
-      }
-
-      playBeep('ok');
-      applyScanDelta(res);
-      showToast(res.message, 'success');
-      resetFoundBox();
-      const bcInput = document.getElementById('scan-barcode-input');
-      bcInput.value = '';
-      bcInput.focus();
-    } catch (err) {
-      showToast('Gagal menyimpan: ' + (err.message || err), 'danger');
-    } finally {
-      hideLoader();
-    }
+    // SIMPAN INSTAN 0 ms (tanpa loading modal!), kamera langsung nyala lagi siap scan berikutnya!
+    const item = APP.activeScanItem;
+    playBeep('ok');
+    enqueueScanSave(item, qty, ket);
+    showToast('Tersimpan: ' + item.nama_barang + ' (+' + qty + ')', 'success');
+    resetFoundBox();
+    const bcInput = document.getElementById('scan-barcode-input');
+    bcInput.value = '';
   }
 
   function showRejectBox(msg) {
@@ -2288,6 +2487,21 @@
     const qty = Number(document.getElementById('edit-scan-qty').value);
     const ket = document.getElementById('edit-scan-ket').value.trim();
 
+    // Update langsung di antrean jika belum sempat terkirim ke server
+    const queued = APP.syncQueue.find(q => q.id_scan === id);
+    if (queued && !APP.isSyncingQueue) {
+      queued.qty_fisik = qty;
+      queued.keterangan = ket;
+      saveSyncQueue();
+      const target = APP.details.find(d => d.id_scan === id);
+      if (target) { target.qty_fisik = qty; target.keterangan = ket; }
+      recomputeClientStats();
+      renderAll();
+      modalEditScanInstance.hide();
+      showToast('Qty scan berhasil diubah.', 'success');
+      return;
+    }
+
     showLoader('Memperbarui qty...');
     try {
       const res = await callServer('updateOpnameDetailQty', id, qty, ket);
@@ -2313,6 +2527,19 @@
 
   async function deleteScanEntry(idScan) {
     if (!confirm('Hapus baris scan ini?')) return;
+
+    // Jika masih di antrean lokal belum terkirim, langsung hapus instan
+    const qIdx = APP.syncQueue.findIndex(q => q.id_scan === idScan);
+    if (qIdx > -1 && !APP.isSyncingQueue) {
+      APP.syncQueue.splice(qIdx, 1);
+      saveSyncQueue();
+      APP.details = APP.details.filter(d => d.id_scan !== idScan);
+      recomputeClientStats();
+      renderAll();
+      showToast('Baris scan dihapus.', 'success');
+      return;
+    }
+
     showLoader('Menghapus scan...');
     try {
       const res = await callServer('deleteOpnameDetail', idScan);
