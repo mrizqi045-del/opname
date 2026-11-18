@@ -400,6 +400,35 @@
       width: 100%;
     }
   }
+
+  /* Login Screen */
+  #login-screen {
+    min-height: 100vh;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #1d4ed8 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+
+  .login-card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    width: 100%;
+    max-width: 400px;
+    padding: 28px 26px;
+  }
+
+  .sortable-th {
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.12s ease;
+  }
+
+  .sortable-th:hover {
+    background-color: #e2e8f0 !important;
+  }
 </style>
 
 </head>
@@ -416,25 +445,67 @@
   <!-- Toast Notification -->
   <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container"></div>
 
+  <!-- ======================================================= -->
+  <!-- LOGIN SCREEN                                            -->
+  <!-- ======================================================= -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="text-center mb-4">
+        <span class="brand-badge fs-5 px-3 py-2 d-inline-block mb-2">
+          <i class="bi bi-upc-scan me-1"></i>OPNAME
+        </span>
+        <h5 class="fw-bold mb-1">Masuk Aplikasi</h5>
+        <div class="small text-muted">Silakan login menggunakan akun Anda</div>
+      </div>
+
+      <div class="alert alert-danger py-2 px-3 small d-none" id="login-error-msg"></div>
+
+      <form onsubmit="handleLoginSubmit(event)">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Username</label>
+          <input type="text" class="form-control form-control-lg" id="login-username"
+                 placeholder="Username..." autocomplete="username" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Password</label>
+          <input type="password" class="form-control form-control-lg" id="login-password"
+                 placeholder="Password..." autocomplete="current-password" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg w-100 fw-semibold" id="btn-login-submit">
+          <i class="bi bi-box-arrow-in-right me-1"></i>Masuk
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ======================================================= -->
+  <!-- APP SHELL (DITAMPILKAN SETELAH LOGIN)                   -->
+  <!-- ======================================================= -->
+  <div id="app-shell" class="d-none">
+
   <!-- Top Navbar -->
   <nav class="app-navbar py-2 px-3">
-    <div class="container-fluid d-flex align-items-center justify-content-between">
+    <div class="container-fluid d-flex align-items-center justify-content-between gap-2">
       <div class="d-flex align-items-center gap-2">
         <span class="brand-badge"><i class="bi bi-upc-scan me-1"></i>OPNAME</span>
-        <span class="small text-secondary d-none d-sm-inline text-white-50">Stock Opname System</span>
+        <span class="badge bg-info-subtle text-info border border-info-subtle text-uppercase" id="nav-user-role" style="font-size: 0.7rem;">-</span>
+        <span class="small text-white-50 d-none d-sm-inline" id="nav-user-name"></span>
       </div>
       <div class="d-flex align-items-center gap-2">
         <span class="badge bg-success-subtle text-success border border-success-subtle d-none align-items-center gap-1 py-1 px-2"
               id="sync-status-badge" style="font-size: 0.75rem; cursor: pointer;" onclick="processSyncQueue()" title="Status sinkronisasi ke Google Sheets">
           <i class="bi bi-cloud-check-fill"></i><span>Tersimpan</span>
         </span>
-        <button class="btn btn-sm btn-outline-warning position-relative d-none" id="btn-nav-unknown" onclick="switchTab('admin')">
+        <button class="btn btn-sm btn-outline-warning position-relative d-none role-admin-only" id="btn-nav-unknown" onclick="switchTab('admin')">
           <i class="bi bi-exclamation-triangle-fill me-1"></i>
           <span class="d-none d-sm-inline">Tidak Terdaftar</span>
           <span class="badge bg-danger ms-1" id="badge-unknown-top">0</span>
         </button>
         <button class="btn btn-sm btn-outline-light" onclick="refreshAllData()" title="Muat ulang data dari Google Sheets">
-          <i class="bi bi-arrow-clockwise me-1"></i><span class="d-none d-sm-inline">Refresh</span>
+          <i class="bi bi-arrow-clockwise"></i><span class="d-none d-sm-inline ms-1">Refresh</span>
+        </button>
+        <button class="btn btn-sm btn-outline-danger text-white border-danger" onclick="handleLogout()" title="Keluar">
+          <i class="bi bi-box-arrow-right"></i><span class="d-none d-sm-inline ms-1">Keluar</span>
         </button>
       </div>
     </div>
@@ -449,18 +520,18 @@
             <i class="bi bi-upc-scan me-1"></i>Scan Opname
           </button>
         </li>
-        <li class="nav-item">
+        <li class="nav-item role-admin-only">
           <button class="nav-link" data-tab="rekap" onclick="switchTab('rekap')">
             <i class="bi bi-table me-1"></i>Rekap Opname
           </button>
         </li>
-        <li class="nav-item">
+        <li class="nav-item role-admin-only">
           <button class="nav-link" data-tab="admin" onclick="switchTab('admin')">
             <i class="bi bi-gear-fill me-1"></i>Admin &amp; Rak
             <span class="badge bg-danger ms-1 d-none" id="badge-unknown-tab">0</span>
           </button>
         </li>
-        <li class="nav-item">
+        <li class="nav-item role-admin-only">
           <button class="nav-link" data-tab="master" onclick="switchTab('master')">
             <i class="bi bi-cloud-upload-fill me-1"></i>Upload Master Data
           </button>
@@ -482,13 +553,12 @@
         <div class="card mb-3">
           <div class="card-body py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
-              <h5 class="mb-0 fw-bold"><i class="bi bi-grid-fill me-2 text-primary"></i>Pilih Rak untuk Mulai Opname</h5>
-              <div class="small text-muted">Klik salah satu rak untuk masuk dan fokus scan barcode di dalam rak tersebut.</div>
+              <h5 class="mb-0 fw-bold"><i class="bi bi-grid-fill me-2 text-primary"></i>Pilih Rak</h5>
             </div>
             <div class="d-flex gap-2 align-items-center w-100 w-md-auto" style="max-width: 360px;">
               <input type="text" class="form-control form-control-sm flex-grow-1"
                      id="rak-picker-search" placeholder="Cari nama rak..." oninput="renderRakGrid()">
-              <button class="btn btn-sm btn-outline-primary text-nowrap" onclick="switchTab('admin')">
+              <button class="btn btn-sm btn-outline-primary text-nowrap role-admin-only" onclick="switchTab('admin')">
                 <i class="bi bi-plus-lg me-1"></i>Rak
               </button>
             </div>
@@ -544,19 +614,12 @@
                 </div>
               </div>
               <div class="card-body">
-                <div class="form-check form-switch mb-3 pb-2 border-bottom">
-                  <input class="form-check-input" type="checkbox" id="scan-auto-plus1">
-                  <label class="form-check-label small" for="scan-auto-plus1">
-                    <strong>Mode Cepat (+1 Otomatis)</strong> — langsung simpan Qty = 1 tiap scan valid
-                  </label>
-                </div>
-
                 <!-- Kontrol Kamera: otomatis adaptasi GitHub Pages (Live Realtime) vs Apps Script (Foto) -->
                 <div class="d-flex gap-2 mb-3">
                   <button class="btn btn-primary btn-lg flex-grow-1 fw-semibold d-none align-items-center justify-content-center gap-2 py-2"
                           id="btn-live-primary" onclick="startCameraScanner()">
-                    <i class="bi bi-camera-video-fill fs-5"></i>
-                    <span>Buka Live Kamera (Scan Otomatis)</span>
+                    <i class="bi bi-upc-scan fs-5"></i>
+                    <span>SCAN</span>
                   </button>
                   <button class="btn btn-danger btn-lg flex-grow-1 fw-semibold d-none align-items-center justify-content-center gap-2 py-2"
                           id="btn-stop-primary" onclick="stopCameraScanner()">
@@ -807,7 +870,6 @@
         <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
           <div class="fw-bold">
             <i class="bi bi-clipboard-data me-1 text-primary"></i>Rekap Hasil Opname &amp; Selisih
-            <span class="text-muted fw-normal small ms-1">(Selisih = Qty Opname - Qty Sistem)</span>
           </div>
           <div class="d-flex flex-wrap gap-2">
             <button class="btn btn-sm btn-primary" onclick="toggleRekapUploadPanel()">
@@ -830,15 +892,20 @@
 
         <div class="card-body border-bottom bg-light py-2">
           <div class="row g-2 align-items-center">
-            <div class="col-md-3">
+            <div class="col-6 col-md-2">
               <select class="form-select form-select-sm" id="rekap-filter-rak" onchange="onRekapRakFilterChange()">
-                <option value="ALL">Semua Rak (Gabungan)</option>
+                <option value="ALL">Semua Rak</option>
               </select>
             </div>
-            <div class="col-md-3">
+            <div class="col-6 col-md-2">
+              <select class="form-select form-select-sm" id="rekap-filter-kategori" onchange="renderRekapTable()">
+                <option value="ALL">Semua Kategori</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
               <select class="form-select form-select-sm" id="rekap-filter-status" onchange="renderRekapTable()">
                 <option value="ALL">Semua Status</option>
-                <option value="SELISIH">Ada Selisih (Kurang / Lebih)</option>
+                <option value="SELISIH">Ada Selisih</option>
                 <option value="Kurang">Kurang (Minus)</option>
                 <option value="Lebih">Lebih (Plus)</option>
                 <option value="Sesuai">Sesuai (0)</option>
@@ -846,11 +913,22 @@
                 <option value="Belum Discan">Belum Discan</option>
               </select>
             </div>
-            <div class="col-md-4">
-              <input type="text" class="form-control form-control-sm" id="rekap-search"
-                     placeholder="Cari barcode, nama barang, kategori, atau rak..." oninput="renderRekapTable()">
+            <div class="col-6 col-md-2">
+              <select class="form-select form-select-sm" id="rekap-sort-select" onchange="onRekapSortSelectChange()">
+                <option value="default">Urutan Default</option>
+                <option value="nama_barang:asc">Nama Barang (A - Z)</option>
+                <option value="nama_barang:desc">Nama Barang (Z - A)</option>
+                <option value="kategori:asc">Kategori (A - Z)</option>
+                <option value="kategori:desc">Kategori (Z - A)</option>
+                <option value="selisih:asc">Selisih (Terkecil)</option>
+                <option value="selisih:desc">Selisih (Terbesar)</option>
+              </select>
             </div>
-            <div class="col-md-2 text-md-end small text-muted" id="rekap-row-count">
+            <div class="col-9 col-md-3">
+              <input type="text" class="form-control form-control-sm" id="rekap-search"
+                     placeholder="Cari barcode, nama, kategori, rak..." oninput="renderRekapTable()">
+            </div>
+            <div class="col-3 col-md-1 text-end small text-muted text-nowrap" id="rekap-row-count">
               0 baris
             </div>
           </div>
@@ -863,12 +941,18 @@
                 <tr>
                   <th class="ps-3">No</th>
                   <th>Barcode</th>
-                  <th>Nama Barang</th>
-                  <th>Kategori</th>
+                  <th class="sortable-th" onclick="toggleRekapSort('nama_barang')">
+                    Nama Barang <i class="bi bi-arrow-down-up small text-muted" id="sort-icon-nama_barang"></i>
+                  </th>
+                  <th class="sortable-th" onclick="toggleRekapSort('kategori')">
+                    Kategori <i class="bi bi-arrow-down-up small text-muted" id="sort-icon-kategori"></i>
+                  </th>
                   <th class="text-end">Harga</th>
                   <th class="text-end">Qty Sistem</th>
                   <th class="text-end">Qty Opname</th>
-                  <th class="text-end">Selisih</th>
+                  <th class="text-end sortable-th" onclick="toggleRekapSort('selisih')">
+                    Selisih <i class="bi bi-arrow-down-up small text-muted" id="sort-icon-selisih"></i>
+                  </th>
                   <th class="text-end">Nilai Selisih</th>
                   <th>Lokasi Rak</th>
                   <th class="text-center pe-3">Status</th>
@@ -995,6 +1079,57 @@
               </div>
             </div>
           </div>
+
+          <!-- Kelola Akun Login (Khusus Superadmin) -->
+          <div class="card mt-3 border-primary d-none" id="superadmin-users-card">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-people-fill me-1"></i>Kelola Akun Login (Superadmin)</span>
+              <span class="badge bg-white text-primary" id="admin-user-count">0</span>
+            </div>
+            <div class="card-body border-bottom">
+              <form onsubmit="handleSaveUserAccount(event)" class="row g-2">
+                <div class="col-6 col-sm-3">
+                  <input type="text" class="form-control form-control-sm" id="u-username" placeholder="Username *" required>
+                </div>
+                <div class="col-6 col-sm-3">
+                  <input type="text" class="form-control form-control-sm" id="u-password" placeholder="Password *" required>
+                </div>
+                <div class="col-6 col-sm-3">
+                  <input type="text" class="form-control form-control-sm" id="u-nama" placeholder="Nama" required>
+                </div>
+                <div class="col-6 col-sm-3">
+                  <select class="form-select form-select-sm" id="u-role">
+                    <option value="pic">PIC (Scan Saja)</option>
+                    <option value="admin">Admin</option>
+                    <option value="superadmin">Superadmin</option>
+                  </select>
+                </div>
+                <div class="col-12">
+                  <button type="submit" class="btn btn-sm btn-primary w-100">
+                    <i class="bi bi-person-plus-fill me-1"></i>Simpan / Tambah Akun
+                  </button>
+                </div>
+              </form>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive" style="max-height: 260px;">
+                <table class="table table-hover table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th class="ps-3">No</th>
+                      <th>Username</th>
+                      <th>Nama</th>
+                      <th>Role</th>
+                      <th class="text-center pe-3">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-users-tbody">
+                    <tr><td colspan="5" class="text-center text-muted py-3">Memuat akun...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1096,7 +1231,7 @@
                       <th>Barcode</th>
                       <th>Nama Barang</th>
                       <th>Kategori</th>
-                      <th class="text-center pe-3">Edit</th>
+                      <th class="text-center pe-3">Aksi</th>
                     </tr>
                   </thead>
                   <tbody id="master-tbody">
@@ -1184,20 +1319,22 @@
       <i class="bi bi-upc-scan"></i>
       <span>Scan</span>
     </button>
-    <button class="m-nav-btn" data-tab="rekap" onclick="switchTab('rekap')">
+    <button class="m-nav-btn role-admin-only" data-tab="rekap" onclick="switchTab('rekap')">
       <i class="bi bi-table"></i>
       <span>Rekap</span>
     </button>
-    <button class="m-nav-btn" data-tab="admin" onclick="switchTab('admin')">
+    <button class="m-nav-btn role-admin-only" data-tab="admin" onclick="switchTab('admin')">
       <i class="bi bi-gear-fill"></i>
       <span>Admin</span>
       <span class="badge rounded-pill bg-danger m-nav-badge d-none" id="badge-unknown-mobile">0</span>
     </button>
-    <button class="m-nav-btn" data-tab="master" onclick="switchTab('master')">
+    <button class="m-nav-btn role-admin-only" data-tab="master" onclick="switchTab('master')">
       <i class="bi bi-cloud-upload-fill"></i>
       <span>Master</span>
     </button>
   </nav>
+
+  </div><!-- /#app-shell -->
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script>
@@ -1208,10 +1345,13 @@
    */
 
   const APP = {
+    auth: null,
+    users: [],
     raks: [],
     masterData: [],
     masterMap: {},
     rekap: { rows: [], summary: {} },
+    rekapSort: { col: '', dir: 'asc' },
     details: [],
     unknowns: [],
     syncQueue: [],
@@ -1231,6 +1371,7 @@
     audioCtx: null
   };
 
+  const AUTH_KEY = 'OPNAME_AUTH_V1';
   const API_URL = 'https://script.google.com/macros/s/AKfycbw44jfh3OgijSs9hVYnfMJTWy650kQUXdBbZ4a7FR1C-i4JlyehVfg8ue_HyymO1-1r/exec';
   const IS_GAS = (typeof google !== 'undefined' && google.script && google.script.run);
 
@@ -1238,7 +1379,7 @@
   let modalEditScanInstance = null;
 
   /* ============================================================
-   * INISIALISASI & SERVER BRIDGE (Apps Script & GitHub Pages API)
+   * INISIALISASI, AUTH LOGIN, & SERVER BRIDGE
    * ============================================================ */
 
   document.addEventListener('DOMContentLoaded', function() {
@@ -1263,25 +1404,8 @@
       if (hdrStart) hdrStart.classList.add('d-none');
     }
 
-    // Muat antrean sync yang belum terkirim + cache instan (<50ms)
-    loadSyncQueue();
-    const hasCache = loadStateFromCache();
-    if (hasCache) {
-      rebuildMasterMap();
-      mergeUnsyncedQueueIntoDetails();
-      recomputeClientStats();
-      renderAll();
-      refreshAllData(true); // sinkronkan terbaru di background tanpa menutupi layar
-    } else {
-      refreshAllData(false);
-    }
-
-    if (APP.syncQueue.length > 0) {
-      processSyncQueue();
-    }
-
     window.addEventListener('online', () => {
-      if (APP.syncQueue.length > 0) processSyncQueue();
+      if (APP.auth && APP.syncQueue.length > 0) processSyncQueue();
     });
 
     window.addEventListener('beforeunload', (e) => {
@@ -1290,7 +1414,183 @@
         e.returnValue = '';
       }
     });
+
+    // Cek sesi login tersimpan
+    const savedAuth = loadSavedAuth();
+    if (savedAuth && savedAuth.token) {
+      enterAppWithAuth(savedAuth, true);
+    } else {
+      showLoginScreen();
+    }
   });
+
+  function loadSavedAuth() {
+    try {
+      const raw = localStorage.getItem(AUTH_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveAuth(user) {
+    APP.auth = user;
+    try {
+      if (user) localStorage.setItem(AUTH_KEY, JSON.stringify(user));
+      else localStorage.removeItem(AUTH_KEY);
+    } catch (e) {}
+  }
+
+  function showLoginScreen() {
+    if (APP.cameraRunning) stopCameraScanner();
+    document.getElementById('app-shell').classList.add('d-none');
+    document.getElementById('login-screen').classList.remove('d-none');
+    const errEl = document.getElementById('login-error-msg');
+    if (errEl) errEl.classList.add('d-none');
+    setTimeout(() => {
+      const u = document.getElementById('login-username');
+      if (u) u.focus();
+    }, 100);
+  }
+
+  async function handleLoginSubmit(e) {
+    e.preventDefault();
+    const uEl = document.getElementById('login-username');
+    const pEl = document.getElementById('login-password');
+    const errEl = document.getElementById('login-error-msg');
+    const btn = document.getElementById('btn-login-submit');
+
+    const username = uEl.value.trim();
+    const password = pEl.value.trim();
+    errEl.classList.add('d-none');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Memeriksa...';
+
+    try {
+      const res = await callServer('loginUser', username, password);
+      if (!res || !res.success || !res.user) {
+        errEl.textContent = (res && res.message) || 'Login gagal.';
+        errEl.classList.remove('d-none');
+        return;
+      }
+      uEl.value = '';
+      pEl.value = '';
+      saveAuth(res.user);
+      enterAppWithAuth(res.user, false);
+      showToast(res.message, 'success');
+    } catch (err) {
+      errEl.textContent = 'Gagal terhubung ke server: ' + (err.message || err);
+      errEl.classList.remove('d-none');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-box-arrow-in-right me-1"></i>Masuk';
+    }
+  }
+
+  function enterAppWithAuth(user, shouldVerifyInBg) {
+    APP.auth = user;
+    document.getElementById('login-screen').classList.add('d-none');
+    document.getElementById('app-shell').classList.remove('d-none');
+    applyRolePermissions();
+
+    // Muat antrean sync + cache instan (<50ms)
+    loadSyncQueue();
+    const hasCache = loadStateFromCache();
+    if (hasCache) {
+      rebuildMasterMap();
+      mergeUnsyncedQueueIntoDetails();
+      recomputeClientStats();
+      renderAll();
+      refreshAllData(true);
+    } else {
+      refreshAllData(false);
+    }
+
+    if (APP.syncQueue.length > 0) {
+      processSyncQueue();
+    }
+
+    if (user.role === 'superadmin') {
+      loadUsersList();
+    }
+
+    if (shouldVerifyInBg && user.token) {
+      callServer('verifySession', user.token).then(res => {
+        if (!res || !res.valid) {
+          saveAuth(null);
+          showLoginScreen();
+          showToast('Sesi login berakhir. Silakan login kembali.', 'warning');
+        } else if (res.user) {
+          saveAuth(res.user);
+          applyRolePermissions();
+        }
+      }).catch(() => {});
+    }
+  }
+
+  async function handleLogout() {
+    if (APP.syncQueue.length > 0) {
+      if (!confirm('Masih ada ' + APP.syncQueue.length + ' scan dalam antrean simpan. Yakin keluar sekarang?')) {
+        return;
+      }
+    }
+    const token = APP.auth && APP.auth.token;
+    if (APP.cameraRunning) await stopCameraScanner();
+    exitRakWorkspace();
+    saveAuth(null);
+    showLoginScreen();
+    if (token) {
+      callServer('logoutUser', token).catch(() => {});
+    }
+  }
+
+  function isAdminOrAbove() {
+    return Boolean(APP.auth && (APP.auth.role === 'admin' || APP.auth.role === 'superadmin'));
+  }
+
+  function isSuperadmin() {
+    return Boolean(APP.auth && APP.auth.role === 'superadmin');
+  }
+
+  function applyRolePermissions() {
+    const role = (APP.auth && APP.auth.role) || 'pic';
+    const nama = (APP.auth && APP.auth.nama) || '';
+
+    const roleBadge = document.getElementById('nav-user-role');
+    const nameEl = document.getElementById('nav-user-name');
+    if (roleBadge) {
+      roleBadge.textContent = role.toUpperCase();
+      roleBadge.className = 'badge text-uppercase ' + (
+        role === 'superadmin' ? 'bg-danger text-white' :
+        role === 'admin' ? 'bg-warning text-dark' :
+        'bg-info text-dark'
+      );
+    }
+    if (nameEl) nameEl.textContent = nama;
+
+    // Role PIC: sembunyikan semua menu selain Scan Opname
+    document.querySelectorAll('.role-admin-only').forEach(el => {
+      if (role === 'pic') {
+        el.classList.add('d-none');
+      } else if (el.id !== 'btn-nav-unknown') {
+        el.classList.remove('d-none');
+      }
+    });
+
+    // Kartu Kelola User hanya untuk Superadmin
+    const usersCard = document.getElementById('superadmin-users-card');
+    if (usersCard) {
+      if (role === 'superadmin') usersCard.classList.remove('d-none');
+      else usersCard.classList.add('d-none');
+    }
+
+    if (role === 'pic') {
+      switchTab('scan');
+    }
+    updateUnknownBadges();
+    renderMasterTable();
+  }
 
   function callServer(fnName, ...args) {
     if (IS_GAS) {
@@ -1634,6 +1934,12 @@
    * Hitung ulang statistik Rak & Rekap Opname langsung di browser (<1ms)
    */
   function recomputeClientStats() {
+    if (!Array.isArray(APP.details)) APP.details = [];
+    if (!Array.isArray(APP.raks)) APP.raks = [];
+    if (!Array.isArray(APP.masterData)) APP.masterData = [];
+    if (!Array.isArray(APP.unknowns)) APP.unknowns = [];
+    if (!APP.rekap || !Array.isArray(APP.rekap.rows)) APP.rekap = { rows: [], summary: {} };
+
     const rakFilterEl = document.getElementById('rekap-filter-rak');
     const rakFilter = (rakFilterEl && rakFilterEl.value) ? rakFilterEl.value : 'ALL';
 
@@ -1774,6 +2080,9 @@
    * ============================================================ */
 
   function switchTab(tabName) {
+    if (tabName !== 'scan' && !isAdminOrAbove()) {
+      tabName = 'scan';
+    }
     if (tabName !== 'scan' && APP.cameraRunning) {
       stopCameraScanner();
     }
@@ -1790,11 +2099,14 @@
     window.scrollTo({ top: 0, behavior: 'instant' });
     if (tabName === 'rekap' || tabName === 'admin') {
       refreshAllData(true);
+      if (tabName === 'admin' && isSuperadmin()) {
+        loadUsersList();
+      }
     }
   }
 
   function updateUnknownBadges() {
-    const count = APP.unknowns.length;
+    const count = (APP.unknowns || []).length;
     const topBtn = document.getElementById('btn-nav-unknown');
     const topBadge = document.getElementById('badge-unknown-top');
     const tabBadge = document.getElementById('badge-unknown-tab');
@@ -1806,7 +2118,7 @@
     if (mobBadge) mobBadge.textContent = count;
     adminBadge.textContent = count;
 
-    if (count > 0) {
+    if (count > 0 && isAdminOrAbove()) {
       topBtn.classList.remove('d-none');
       tabBadge.classList.remove('d-none');
       if (mobBadge) mobBadge.classList.remove('d-none');
@@ -2350,30 +2662,19 @@
         saveStateToCache();
       }
 
-      // Barcode terdaftar -> RESPON INSTAN 0 ms!
+      // Barcode terdaftar -> RESPON INSTAN 0 ms (langsung tampil form input Qty Fisik)
       playBeep('ok');
-      const autoPlus1 = document.getElementById('scan-auto-plus1').checked;
+      pauseCameraIfRunning();
+      APP.activeScanItem = foundItem;
+      document.getElementById('found-barcode').textContent = foundItem.barcode;
+      document.getElementById('found-nama-barang').textContent = foundItem.nama_barang || '-';
+      document.getElementById('scan-qty-input').value = 1;
+      document.getElementById('scan-ket-input').value = '';
+      document.getElementById('scan-found-box').classList.remove('d-none');
 
-      if (autoPlus1) {
-        // Mode cepat (+1): simpan INSTAN tanpa loading, kirim ke Sheets di background!
-        enqueueScanSave(foundItem, 1, '');
-        showToast('+1 ' + foundItem.nama_barang, 'success');
-        document.getElementById('scan-barcode-input').value = '';
-        resumeCameraIfPaused();
-      } else {
-        // Mode input manual qty (INSTAN 0 ms!)
-        pauseCameraIfRunning();
-        APP.activeScanItem = foundItem;
-        document.getElementById('found-barcode').textContent = foundItem.barcode;
-        document.getElementById('found-nama-barang').textContent = foundItem.nama_barang || '-';
-        document.getElementById('scan-qty-input').value = 1;
-        document.getElementById('scan-ket-input').value = '';
-        document.getElementById('scan-found-box').classList.remove('d-none');
-
-        const qtyEl = document.getElementById('scan-qty-input');
-        qtyEl.focus();
-        qtyEl.select();
-      }
+      const qtyEl = document.getElementById('scan-qty-input');
+      qtyEl.focus();
+      qtyEl.select();
     } catch (err) {
       playBeep('error');
       resumeCameraIfPaused();
@@ -2567,12 +2868,86 @@
     renderRekapTable();
   }
 
+  function populateRekapKategoriFilter() {
+    const sel = document.getElementById('rekap-filter-kategori');
+    if (!sel) return;
+    const prev = sel.value || 'ALL';
+    const rows = (APP.rekap && Array.isArray(APP.rekap.rows)) ? APP.rekap.rows : [];
+    const katSet = new Set();
+    rows.forEach(r => {
+      const k = String(r.kategori || '').trim();
+      if (k && k !== '-') katSet.add(k);
+    });
+    const sorted = Array.from(katSet).sort((a, b) => a.localeCompare(b, 'id', { sensitivity: 'base' }));
+    let html = '<option value="ALL">Semua Kategori</option>';
+    sorted.forEach(k => {
+      html += '<option value="' + escapeHtml(k) + '">' + escapeHtml(k) + '</option>';
+    });
+    sel.innerHTML = html;
+    if (prev === 'ALL' || sorted.includes(prev)) {
+      sel.value = prev;
+    } else {
+      sel.value = 'ALL';
+    }
+  }
+
+  function toggleRekapSort(col) {
+    if (APP.rekapSort.col === col) {
+      if (APP.rekapSort.dir === 'asc') {
+        APP.rekapSort.dir = 'desc';
+      } else {
+        APP.rekapSort.col = '';
+        APP.rekapSort.dir = 'asc';
+      }
+    } else {
+      APP.rekapSort.col = col;
+      APP.rekapSort.dir = 'asc';
+    }
+    syncRekapSortControls();
+    renderRekapTable();
+  }
+
+  function onRekapSortSelectChange() {
+    const val = document.getElementById('rekap-sort-select').value;
+    if (!val || val === 'default') {
+      APP.rekapSort = { col: '', dir: 'asc' };
+    } else {
+      const parts = val.split(':');
+      APP.rekapSort = { col: parts[0], dir: parts[1] || 'asc' };
+    }
+    syncRekapSortControls();
+    renderRekapTable();
+  }
+
+  function syncRekapSortControls() {
+    const sel = document.getElementById('rekap-sort-select');
+    if (sel) {
+      sel.value = APP.rekapSort.col ? (APP.rekapSort.col + ':' + APP.rekapSort.dir) : 'default';
+    }
+    ['nama_barang', 'kategori', 'selisih'].forEach(col => {
+      const ic = document.getElementById('sort-icon-' + col);
+      if (!ic) return;
+      if (APP.rekapSort.col !== col) {
+        ic.className = 'bi bi-arrow-down-up small text-muted';
+      } else if (APP.rekapSort.dir === 'asc') {
+        ic.className = 'bi bi-sort-alpha-down text-primary';
+        if (col === 'selisih') ic.className = 'bi bi-sort-numeric-down text-primary';
+      } else {
+        ic.className = 'bi bi-sort-alpha-up text-primary';
+        if (col === 'selisih') ic.className = 'bi bi-sort-numeric-up text-primary';
+      }
+    });
+  }
+
   function getFilteredRekapRows() {
+    const katEl = document.getElementById('rekap-filter-kategori');
+    const katFilter = katEl ? katEl.value : 'ALL';
     const statusFilter = document.getElementById('rekap-filter-status').value;
     const q = (document.getElementById('rekap-search').value || '').trim().toLowerCase();
-    const rows = (APP.rekap && APP.rekap.rows) ? APP.rekap.rows : [];
+    const rows = (APP.rekap && Array.isArray(APP.rekap.rows)) ? APP.rekap.rows : [];
 
-    return rows.filter(r => {
+    const filtered = rows.filter(r => {
+      if (katFilter !== 'ALL' && String(r.kategori || '').trim() !== katFilter) return false;
       if (statusFilter === 'SELISIH' && r.selisih === 0) return false;
       if (statusFilter === 'Kurang' && r.selisih >= 0) return false;
       if (statusFilter === 'Lebih' && r.selisih <= 0) return false;
@@ -2589,9 +2964,25 @@
       }
       return true;
     });
+
+    if (APP.rekapSort && APP.rekapSort.col) {
+      const col = APP.rekapSort.col;
+      const mult = APP.rekapSort.dir === 'desc' ? -1 : 1;
+      filtered.sort((a, b) => {
+        if (col === 'selisih') {
+          return ((Number(a.selisih) || 0) - (Number(b.selisih) || 0)) * mult;
+        }
+        const sa = String(a[col] || '').trim();
+        const sb = String(b[col] || '').trim();
+        return sa.localeCompare(sb, 'id', { sensitivity: 'base' }) * mult;
+      });
+    }
+
+    return filtered;
   }
 
   function renderRekapTable() {
+    populateRekapKategoriFilter();
     const sum = (APP.rekap && APP.rekap.summary) || {};
     document.getElementById('stat-total-items').textContent = formatNumber(sum.totalItems || 0);
     document.getElementById('stat-scanned').textContent = formatNumber(sum.scannedItems || 0);
@@ -3310,13 +3701,137 @@
     }
   }
 
+  /* ============================================================
+   * SUPERADMIN: KELOLA AKUN LOGIN & HAPUS MASTER DATA
+   * ============================================================ */
+
+  async function loadUsersList() {
+    if (!isSuperadmin() || !APP.auth || !APP.auth.token) return;
+    try {
+      APP.users = await callServer('getUsersList', APP.auth.token);
+      renderUsersTable();
+    } catch (err) {
+      // Abaikan jika gagal silent load
+    }
+  }
+
+  function renderUsersTable() {
+    const tbody = document.getElementById('admin-users-tbody');
+    const badge = document.getElementById('admin-user-count');
+    if (!tbody) return;
+    const list = Array.isArray(APP.users) ? APP.users : [];
+    if (badge) badge.textContent = list.length;
+
+    if (list.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3">Belum ada akun.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = list.map((u, idx) => {
+      const roleClass = u.role === 'superadmin' ? 'bg-danger' : u.role === 'admin' ? 'bg-warning text-dark' : 'bg-info text-dark';
+      const isSelf = APP.auth && APP.auth.username.toLowerCase() === u.username.toLowerCase();
+      return (
+        '<tr>' +
+          '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
+          '<td class="mono fw-semibold">' + escapeHtml(u.username) + '</td>' +
+          '<td>' + escapeHtml(u.nama) + '</td>' +
+          '<td><span class="badge text-uppercase ' + roleClass + '">' + escapeHtml(u.role) + '</span></td>' +
+          '<td class="text-center pe-3 text-nowrap">' +
+            (isSelf
+              ? '<span class="small text-muted">Aktif</span>'
+              : '<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="handleDeleteUserAccount(' + jsArg(u.username) + ')" title="Hapus Akun"><i class="bi bi-trash"></i></button>'
+            ) +
+          '</td>' +
+        '</tr>'
+      );
+    }).join('');
+  }
+
+  async function handleSaveUserAccount(e) {
+    e.preventDefault();
+    if (!isSuperadmin()) return;
+    const payload = {
+      username: document.getElementById('u-username').value.trim(),
+      password: document.getElementById('u-password').value.trim(),
+      nama: document.getElementById('u-nama').value.trim(),
+      role: document.getElementById('u-role').value
+    };
+    if (!payload.username || !payload.password) return;
+
+    showLoader('Menyimpan akun...');
+    try {
+      const res = await callServer('saveUserAccount', APP.auth.token, payload);
+      if (res.success) {
+        APP.users = res.users || [];
+        renderUsersTable();
+        document.getElementById('u-username').value = '';
+        document.getElementById('u-password').value = '';
+        document.getElementById('u-nama').value = '';
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal menyimpan akun: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function handleDeleteUserAccount(username) {
+    if (!isSuperadmin()) return;
+    if (!confirm('Hapus akun "' + username + '"?')) return;
+    showLoader('Menghapus akun...');
+    try {
+      const res = await callServer('deleteUserAccount', APP.auth.token, username);
+      if (res.success) {
+        APP.users = res.users || [];
+        renderUsersTable();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal menghapus akun: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function handleDeleteMasterItem(barcode) {
+    if (!isSuperadmin() || !APP.auth || !APP.auth.token) {
+      showToast('Hanya Superadmin yang dapat menghapus Master Data.', 'danger');
+      return;
+    }
+    if (!confirm('Hapus produk "' + barcode + '" dari Daftar Master Produk?')) return;
+    showLoader('Menghapus produk dari Master...');
+    try {
+      const res = await callServer('deleteMasterItem', barcode, APP.auth.token);
+      if (res.success) {
+        APP.masterData = res.masterData || [];
+        if (res.rekap) APP.rekap = res.rekap;
+        rebuildMasterMap();
+        recomputeClientStats();
+        renderAll();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal menghapus: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
   function renderMasterTable() {
     const tbody = document.getElementById('master-tbody');
     const q = (document.getElementById('master-search').value || '').trim().toLowerCase();
+    const canDelete = isSuperadmin();
 
-    document.getElementById('master-total-count').textContent = APP.masterData.length;
+    document.getElementById('master-total-count').textContent = (APP.masterData || []).length;
 
-    let rows = APP.masterData;
+    let rows = Array.isArray(APP.masterData) ? APP.masterData : [];
     if (q) {
       rows = rows.filter(m =>
         m.barcode.toLowerCase().includes(q) ||
@@ -3337,9 +3852,15 @@
         '<td class="fw-semibold">' + escapeHtml(m.nama_barang || '-') + '</td>' +
         '<td>' + escapeHtml(m.kategori || '-') + '</td>' +
         '<td class="text-center pe-3 text-nowrap">' +
-          '<button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openEditMasterModal(' + jsArg(m.barcode) + ')" title="Edit">' +
+          '<button class="btn btn-sm btn-outline-primary py-0 px-2' + (canDelete ? ' me-1' : '') + '" onclick="openEditMasterModal(' + jsArg(m.barcode) + ')" title="Edit">' +
             '<i class="bi bi-pencil"></i>' +
           '</button>' +
+          (canDelete
+            ? '<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="handleDeleteMasterItem(' + jsArg(m.barcode) + ')" title="Hapus (Superadmin)">' +
+                '<i class="bi bi-trash"></i>' +
+              '</button>'
+            : ''
+          ) +
         '</td>' +
       '</tr>'
     ).join('');
