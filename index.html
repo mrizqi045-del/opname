@@ -1250,7 +1250,14 @@
       if (hdrStart) hdrStart.classList.add('d-none');
     }
 
-    refreshAllData();
+    // Muat cache instan (<50ms) agar layar langsung terbuka tanpa menunggu loading!
+    const hasCache = loadStateFromCache();
+    if (hasCache) {
+      renderAll();
+      refreshAllData(true); // sinkronkan terbaru di background tanpa menutupi layar
+    } else {
+      refreshAllData(false);
+    }
   });
 
   function callServer(fnName, ...args) {
@@ -1376,8 +1383,144 @@
     }
   }
 
-  async function refreshAllData() {
-    showLoader('Memuat data dari Google Sheets...');
+  const CACHE_KEY = 'OPNAME_CACHE_V1';
+
+  function saveStateToCache() {
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify({
+        ts: Date.now(),
+        raks: APP.raks,
+        masterData: APP.masterData,
+        rekap: APP.rekap,
+        details: APP.details,
+        unknowns: APP.unknowns
+      }));
+    } catch (e) {}
+  }
+
+  function loadStateFromCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data || !Array.isArray(data.raks)) return false;
+      APP.raks = data.raks || [];
+      APP.masterData = data.masterData || [];
+      APP.rekap = data.rekap || { rows: [], summary: {} };
+      APP.details = data.details || [];
+      APP.unknowns = data.unknowns || [];
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /**
+   * Hitung ulang statistik Rak & Rekap Opname langsung di browser (<1ms)
+   */
+  function recomputeClientStats() {
+    const rakFilterEl = document.getElementById('rekap-filter-rak');
+    const rakFilter = (rakFilterEl && rakFilterEl.value) ? rakFilterEl.value : 'ALL';
+
+    // 1. Update statistik semua rak
+    const rakMap = {};
+    APP.details.forEach(d => {
+      if (!d.rak) return;
+      if (!rakMap[d.rak]) rakMap[d.rak] = { scans: 0, totalQty: 0 };
+      rakMap[d.rak].scans += 1;
+      rakMap[d.rak].totalQty += (Number(d.qty_fisik) || 0);
+    });
+    APP.raks.forEach(r => {
+      const st = rakMap[r.nama_rak] || { scans: 0, totalQty: 0 };
+      r.total_scan = st.scans;
+      r.total_qty = st.totalQty;
+    });
+
+    // 2. Update Rekap Opname berdasarkan rakFilter
+    const masterMap = {};
+    APP.masterData.forEach(m => { masterMap[m.barcode] = m; });
+
+    const filteredDetails = rakFilter === 'ALL'
+      ? APP.details
+      : APP.details.filter(d => d.rak === rakFilter);
+
+    const scanMap = {};
+    filteredDetails.forEach(d => {
+      if (!scanMap[d.barcode]) scanMap[d.barcode] = { totalQty: 0, scanCount: 0, byRak: {} };
+      scanMap[d.barcode].totalQty += (Number(d.qty_fisik) || 0);
+      scanMap[d.barcode].scanCount += 1;
+      scanMap[d.barcode].byRak[d.rak] = (scanMap[d.barcode].byRak[d.rak] || 0) + (Number(d.qty_fisik) || 0);
+    });
+
+    const baseRows = (APP.rekap && Array.isArray(APP.rekap.rows)) ? APP.rekap.rows : [];
+    const summary = {
+      totalItems: baseRows.length,
+      scannedItems: 0,
+      unscannedItems: 0,
+      matchItems: 0,
+      shortItems: 0,
+      overItems: 0,
+      totalQtySistem: 0,
+      totalQtyOpname: 0,
+      totalSelisihQty: 0,
+      totalNilaiSelisih: 0
+    };
+
+    const nextRows = baseRows.map((item, idx) => {
+      const m = masterMap[item.barcode] || null;
+      const nama = (item.nama_barang && item.nama_barang !== '-') ? item.nama_barang : ((m && m.nama_barang) || '-');
+      const kat = (item.kategori && item.kategori !== '-') ? item.kategori : ((m && m.kategori) || '-');
+      const harga = Number(item.harga) || 0;
+      const qtySis = Number(item.qty_sistem) || 0;
+
+      const sc = scanMap[item.barcode];
+      const scanned = Boolean(sc && sc.scanCount > 0);
+      const qtyOp = scanned ? sc.totalQty : 0;
+      const selisih = qtyOp - qtySis;
+      const nilaiSel = selisih * harga;
+      const lokasiRak = scanned
+        ? Object.keys(sc.byRak).map(r => r + ' (' + sc.byRak[r] + ')').join(', ')
+        : '-';
+
+      let status = 'Belum Discan';
+      if (scanned) {
+        summary.scannedItems++;
+        if (selisih === 0) { status = 'Sesuai'; summary.matchItems++; }
+        else if (selisih < 0) { status = 'Kurang'; summary.shortItems++; }
+        else { status = 'Lebih'; summary.overItems++; }
+      } else {
+        summary.unscannedItems++;
+        if (selisih < 0) summary.shortItems++;
+      }
+
+      summary.totalQtySistem += qtySis;
+      summary.totalQtyOpname += qtyOp;
+      summary.totalSelisihQty += selisih;
+      summary.totalNilaiSelisih += nilaiSel;
+
+      return {
+        no: idx + 1,
+        barcode: item.barcode,
+        nama_barang: nama,
+        kategori: kat,
+        harga: harga,
+        qty_sistem: qtySis,
+        qty_opname: qtyOp,
+        selisih: selisih,
+        nilai_selisih: nilaiSel,
+        lokasi_rak: lokasiRak,
+        scanned: scanned,
+        status: status
+      };
+    });
+
+    APP.rekap = { rows: nextRows, summary: summary };
+  }
+
+  async function refreshAllData(silent) {
+    if (!silent) {
+      showLoader('Memuat data dari Google Sheets...');
+    }
     try {
       const state = await callServer('getInitialState');
       APP.raks = state.raks || [];
@@ -1385,15 +1528,20 @@
       APP.rekap = state.rekap || { rows: [], summary: {} };
       APP.details = state.details || [];
       APP.unknowns = state.unknowns || [];
+      recomputeClientStats();
+      saveStateToCache();
       renderAll();
     } catch (err) {
-      showToast('Gagal memuat data: ' + (err.message || err), 'danger');
+      if (!silent) {
+        showToast('Gagal memuat data: ' + (err.message || err), 'danger');
+      }
     } finally {
-      hideLoader();
+      if (!silent) hideLoader();
     }
   }
 
   function renderAll() {
+    saveStateToCache();
     renderRakDropdowns();
     renderAdminRakTable();
     renderUnknownTable();
@@ -1422,6 +1570,9 @@
     if (btn) btn.classList.add('active');
     if (mBtn) mBtn.classList.add('active');
     window.scrollTo({ top: 0, behavior: 'instant' });
+    if (tabName === 'rekap' || tabName === 'admin') {
+      refreshAllData(true);
+    }
   }
 
   function updateUnknownBadges() {
@@ -1888,6 +2039,29 @@
     processBarcodeLookup(code);
   }
 
+  function applyScanDelta(res) {
+    if (res.detail) {
+      APP.details.push(res.detail);
+    } else if (res.details) {
+      APP.details = res.details;
+    }
+    if (res.addedRekap) {
+      if (!APP.rekap || !Array.isArray(APP.rekap.rows)) {
+        APP.rekap = { rows: [], summary: {} };
+      }
+      if (!APP.rekap.rows.some(r => r.barcode === res.addedRekap.barcode)) {
+        APP.rekap.rows.push(res.addedRekap);
+      }
+    } else if (res.rekap) {
+      APP.rekap = res.rekap;
+    }
+    if (res.raks) {
+      APP.raks = res.raks;
+    }
+    recomputeClientStats();
+    renderAll();
+  }
+
   async function processBarcodeLookup(barcode) {
     if (!APP.selectedRak) {
       playBeep('error');
@@ -1896,51 +2070,63 @@
     }
     if (APP.isCheckingBarcode) return;
 
+    const cleanCode = String(barcode || '').trim();
+    if (!cleanCode) return;
+
     APP.isCheckingBarcode = true;
     hideRejectBox();
-    showLoader('Cek barcode ' + barcode + '...');
 
     try {
-      const res = await callServer('checkBarcodeForScan', barcode, APP.selectedRak);
-      if (!res.success) {
-        playBeep('error');
-        showToast(res.message || 'Gagal cek barcode.', 'warning');
-        return;
-      }
+      // 1. Cek INSTAN di memori Master Data lokal (0 ms tanpa loading!)
+      let foundItem = APP.masterData.find(m => m.barcode === cleanCode) || null;
 
-      // OPSI 3: Barcode tidak terdaftar -> TOLAK & tampilkan alert merah
-      if (!res.found) {
-        playBeep('error');
-        resetFoundBox();
-        showRejectBox(res.message);
-        if (res.unknowns) {
-          APP.unknowns = res.unknowns;
-          renderUnknownTable();
-          updateUnknownBadges();
+      // 2. Hanya tanya server jika tidak ada di cache lokal (antisipasi admin baru tambah master)
+      if (!foundItem) {
+        showLoader('Cek barcode ' + cleanCode + '...');
+        const res = await callServer('checkBarcodeForScan', cleanCode, APP.selectedRak);
+        hideLoader();
+
+        if (!res.success) {
+          playBeep('error');
+          showToast(res.message || 'Gagal cek barcode.', 'warning');
+          return;
         }
-        document.getElementById('scan-barcode-input').value = '';
-        document.getElementById('scan-barcode-input').focus();
-        return;
+
+        if (!res.found) {
+          playBeep('error');
+          resetFoundBox();
+          showRejectBox(res.message);
+          if (res.unknowns) {
+            APP.unknowns = res.unknowns;
+            renderUnknownTable();
+            updateUnknownBadges();
+            saveStateToCache();
+          }
+          document.getElementById('scan-barcode-input').value = '';
+          document.getElementById('scan-barcode-input').focus();
+          return;
+        }
+
+        foundItem = res.item;
+        APP.masterData.push(foundItem);
+        saveStateToCache();
       }
 
-      // Barcode terdaftar
+      // Barcode terdaftar -> langsung respon instan!
       playBeep('ok');
       const autoPlus1 = document.getElementById('scan-auto-plus1').checked;
 
       if (autoPlus1) {
-        // Mode cepat: langsung simpan Qty = 1
-        showLoader('Menyimpan +1 (' + res.item.barcode + ')...');
+        // Mode cepat: simpan Qty = 1 langsung
+        showLoader('Menyimpan +1 (' + foundItem.barcode + ')...');
         const saveRes = await callServer('saveOpnameScan', {
           rak: APP.selectedRak,
-          barcode: res.item.barcode,
+          barcode: foundItem.barcode,
           qty_fisik: 1,
           keterangan: ''
         });
         if (saveRes.success) {
-          APP.raks = saveRes.raks;
-          APP.details = saveRes.details;
-          APP.rekap = saveRes.rekap;
-          renderAll();
+          applyScanDelta(saveRes);
           showToast(saveRes.message, 'success');
           document.getElementById('scan-barcode-input').value = '';
           document.getElementById('scan-barcode-input').focus();
@@ -1949,11 +2135,11 @@
           showToast(saveRes.message, 'danger');
         }
       } else {
-        // Mode input manual qty (blind scan: tampilkan Barcode + Nama Barang saja)
+        // Mode input manual qty (INSTAN 0 ms!)
         pauseCameraIfRunning();
-        APP.activeScanItem = res.item;
-        document.getElementById('found-barcode').textContent = res.item.barcode;
-        document.getElementById('found-nama-barang').textContent = res.item.nama_barang || '-';
+        APP.activeScanItem = foundItem;
+        document.getElementById('found-barcode').textContent = foundItem.barcode;
+        document.getElementById('found-nama-barang').textContent = foundItem.nama_barang || '-';
         document.getElementById('scan-qty-input').value = 1;
         document.getElementById('scan-ket-input').value = '';
         document.getElementById('scan-found-box').classList.remove('d-none');
@@ -1983,7 +2169,7 @@
       return;
     }
 
-    showLoader('Menyimpan hasil scan...');
+    showLoader('Menyimpan...');
     try {
       const res = await callServer('saveOpnameScan', {
         rak: APP.selectedRak,
@@ -2008,10 +2194,7 @@
       }
 
       playBeep('ok');
-      APP.raks = res.raks;
-      APP.details = res.details;
-      APP.rekap = res.rekap;
-      renderAll();
+      applyScanDelta(res);
       showToast(res.message, 'success');
       resetFoundBox();
       const bcInput = document.getElementById('scan-barcode-input');
@@ -2109,9 +2292,12 @@
     try {
       const res = await callServer('updateOpnameDetailQty', id, qty, ket);
       if (res.success) {
-        APP.raks = res.raks;
-        APP.details = res.details;
-        APP.rekap = res.rekap;
+        const target = APP.details.find(d => d.id_scan === id);
+        if (target) {
+          target.qty_fisik = qty;
+          target.keterangan = ket;
+        }
+        recomputeClientStats();
         renderAll();
         modalEditScanInstance.hide();
         showToast(res.message, 'success');
@@ -2131,9 +2317,8 @@
     try {
       const res = await callServer('deleteOpnameDetail', idScan);
       if (res.success) {
-        APP.raks = res.raks;
-        APP.details = res.details;
-        APP.rekap = res.rekap;
+        APP.details = APP.details.filter(d => d.id_scan !== idScan);
+        recomputeClientStats();
         renderAll();
         showToast(res.message, 'success');
       } else {
@@ -2150,17 +2335,9 @@
    * TAB 2: REKAP OPNAME & SELISIH + EXPORT EXCEL
    * ============================================================ */
 
-  async function onRekapRakFilterChange() {
-    const rak = document.getElementById('rekap-filter-rak').value;
-    showLoader('Menghitung rekap...');
-    try {
-      APP.rekap = await callServer('getOpnameRekap', rak);
-      renderRekapTable();
-    } catch (err) {
-      showToast('Gagal memuat rekap: ' + (err.message || err), 'danger');
-    } finally {
-      hideLoader();
-    }
+  function onRekapRakFilterChange() {
+    recomputeClientStats();
+    renderRekapTable();
   }
 
   function getFilteredRekapRows() {
