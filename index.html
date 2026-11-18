@@ -504,6 +504,9 @@
         <button class="btn btn-sm btn-outline-light" onclick="refreshAllData()" title="Muat ulang data dari Google Sheets">
           <i class="bi bi-arrow-clockwise"></i><span class="d-none d-sm-inline ms-1">Refresh</span>
         </button>
+        <button class="btn btn-sm btn-outline-light" onclick="openChangePasswordModal()" title="Ganti Password">
+          <i class="bi bi-key-fill"></i><span class="d-none d-sm-inline ms-1">Password</span>
+        </button>
         <button class="btn btn-sm btn-outline-danger text-white border-danger" onclick="handleLogout()" title="Keluar">
           <i class="bi bi-box-arrow-right"></i><span class="d-none d-sm-inline ms-1">Keluar</span>
         </button>
@@ -1080,10 +1083,10 @@
             </div>
           </div>
 
-          <!-- Kelola Akun Login (Khusus Superadmin) -->
+          <!-- Kelola Akun Login (Admin: PIC saja | Superadmin: PIC & Admin; Superadmin tidak ditampilkan) -->
           <div class="card mt-3 border-primary d-none" id="superadmin-users-card">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-              <span><i class="bi bi-people-fill me-1"></i>Kelola Akun Login (Superadmin)</span>
+              <span><i class="bi bi-people-fill me-1"></i>Kelola Akun Login</span>
               <span class="badge bg-white text-primary" id="admin-user-count">0</span>
             </div>
             <div class="card-body border-bottom">
@@ -1100,8 +1103,7 @@
                 <div class="col-6 col-sm-3">
                   <select class="form-select form-select-sm" id="u-role">
                     <option value="pic">PIC (Scan Saja)</option>
-                    <option value="admin">Admin</option>
-                    <option value="superadmin">Superadmin</option>
+                    <option value="admin" id="opt-role-admin">Admin</option>
                   </select>
                 </div>
                 <div class="col-12">
@@ -1313,6 +1315,37 @@
     </div>
   </div>
 
+  <!-- ======================================================= -->
+  <!-- MODAL: GANTI PASSWORD (SEMUA ROLE, TANPA PASSWORD LAMA) -->
+  <!-- ======================================================= -->
+  <div class="modal fade" id="modalChangePassword" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title"><i class="bi bi-key-fill me-1 text-primary"></i>Ganti Password</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form onsubmit="handleChangePasswordSubmit(event)">
+          <div class="modal-body">
+            <div class="small text-muted mb-2" id="cp-user-info"></div>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Password Baru</label>
+              <input type="password" class="form-control" id="cp-new-pass" minlength="4" required placeholder="Minimal 4 karakter">
+            </div>
+            <div class="mb-1">
+              <label class="form-label small fw-semibold">Ulangi Password Baru</label>
+              <input type="password" class="form-control" id="cp-confirm-pass" minlength="4" required placeholder="Ketik ulang password baru">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Batal</button>
+            <button type="submit" class="btn btn-sm btn-primary">Simpan Password</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
   <!-- Mobile Bottom Navigation Bar -->
   <nav class="mobile-bottom-nav d-md-none" id="mobile-tabs">
     <button class="m-nav-btn active" data-tab="scan" onclick="switchTab('scan')">
@@ -1377,6 +1410,7 @@
 
   let modalMasterInstance = null;
   let modalEditScanInstance = null;
+  let modalChangePasswordInstance = null;
 
   /* ============================================================
    * INISIALISASI, AUTH LOGIN, & SERVER BRIDGE
@@ -1385,6 +1419,7 @@
   document.addEventListener('DOMContentLoaded', function() {
     modalMasterInstance = new bootstrap.Modal(document.getElementById('modalMasterItem'));
     modalEditScanInstance = new bootstrap.Modal(document.getElementById('modalEditScan'));
+    modalChangePasswordInstance = new bootstrap.Modal(document.getElementById('modalChangePassword'));
 
     // Jika berjalan di GitHub Pages (standalone HTTPS), jadikan Live Kamera tombol utama
     if (!IS_GAS) {
@@ -1511,7 +1546,7 @@
       processSyncQueue();
     }
 
-    if (user.role === 'superadmin') {
+    if (user.role === 'admin' || user.role === 'superadmin') {
       loadUsersList();
     }
 
@@ -1578,11 +1613,25 @@
       }
     });
 
-    // Kartu Kelola User hanya untuk Superadmin
+    // Kartu Kelola User: tampil untuk Admin (role PIC saja) & Superadmin (role PIC & Admin)
     const usersCard = document.getElementById('superadmin-users-card');
     if (usersCard) {
-      if (role === 'superadmin') usersCard.classList.remove('d-none');
+      if (role === 'admin' || role === 'superadmin') usersCard.classList.remove('d-none');
       else usersCard.classList.add('d-none');
+    }
+
+    // Admin hanya boleh menambah role PIC (sembunyikan opsi Admin dari dropdown role)
+    const optAdmin = document.getElementById('opt-role-admin');
+    const roleSelect = document.getElementById('u-role');
+    if (optAdmin && roleSelect) {
+      if (role === 'superadmin') {
+        optAdmin.hidden = false;
+        optAdmin.disabled = false;
+      } else {
+        optAdmin.hidden = true;
+        optAdmin.disabled = true;
+        roleSelect.value = 'pic';
+      }
     }
 
     if (role === 'pic') {
@@ -2099,7 +2148,7 @@
     window.scrollTo({ top: 0, behavior: 'instant' });
     if (tabName === 'rekap' || tabName === 'admin') {
       refreshAllData(true);
-      if (tabName === 'admin' && isSuperadmin()) {
+      if (tabName === 'admin' && isAdminOrAbove()) {
         loadUsersList();
       }
     }
@@ -3702,11 +3751,55 @@
   }
 
   /* ============================================================
-   * SUPERADMIN: KELOLA AKUN LOGIN & HAPUS MASTER DATA
+   * GANTI PASSWORD (SEMUA ROLE, TANPA PASSWORD LAMA)
+   * ============================================================ */
+
+  function openChangePasswordModal() {
+    if (!APP.auth) return;
+    document.getElementById('cp-user-info').textContent =
+      'Akun: ' + APP.auth.username + ' (' + APP.auth.role.toUpperCase() + ')';
+    document.getElementById('cp-new-pass').value = '';
+    document.getElementById('cp-confirm-pass').value = '';
+    modalChangePasswordInstance.show();
+    setTimeout(() => document.getElementById('cp-new-pass').focus(), 250);
+  }
+
+  async function handleChangePasswordSubmit(e) {
+    e.preventDefault();
+    if (!APP.auth || !APP.auth.token) return;
+    const p1 = document.getElementById('cp-new-pass').value.trim();
+    const p2 = document.getElementById('cp-confirm-pass').value.trim();
+    if (p1.length < 4) {
+      showToast('Password baru minimal 4 karakter.', 'warning');
+      return;
+    }
+    if (p1 !== p2) {
+      showToast('Konfirmasi password tidak cocok.', 'warning');
+      return;
+    }
+
+    showLoader('Menyimpan password baru...');
+    try {
+      const res = await callServer('changeMyPassword', APP.auth.token, p1);
+      if (res.success) {
+        modalChangePasswordInstance.hide();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal ganti password: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  /* ============================================================
+   * KELOLA AKUN LOGIN (ADMIN: PIC SAJA | SUPERADMIN: PIC & ADMIN)
    * ============================================================ */
 
   async function loadUsersList() {
-    if (!isSuperadmin() || !APP.auth || !APP.auth.token) return;
+    if (!isAdminOrAbove() || !APP.auth || !APP.auth.token) return;
     try {
       APP.users = await callServer('getUsersList', APP.auth.token);
       renderUsersTable();
@@ -3719,7 +3812,7 @@
     const tbody = document.getElementById('admin-users-tbody');
     const badge = document.getElementById('admin-user-count');
     if (!tbody) return;
-    const list = Array.isArray(APP.users) ? APP.users : [];
+    const list = (Array.isArray(APP.users) ? APP.users : []).filter(u => u.role !== 'superadmin');
     if (badge) badge.textContent = list.length;
 
     if (list.length === 0) {
@@ -3728,7 +3821,7 @@
     }
 
     tbody.innerHTML = list.map((u, idx) => {
-      const roleClass = u.role === 'superadmin' ? 'bg-danger' : u.role === 'admin' ? 'bg-warning text-dark' : 'bg-info text-dark';
+      const roleClass = u.role === 'admin' ? 'bg-warning text-dark' : 'bg-info text-dark';
       const isSelf = APP.auth && APP.auth.username.toLowerCase() === u.username.toLowerCase();
       return (
         '<tr>' +
@@ -3749,12 +3842,13 @@
 
   async function handleSaveUserAccount(e) {
     e.preventDefault();
-    if (!isSuperadmin()) return;
+    if (!isAdminOrAbove()) return;
+    const roleVal = isSuperadmin() ? document.getElementById('u-role').value : 'pic';
     const payload = {
       username: document.getElementById('u-username').value.trim(),
       password: document.getElementById('u-password').value.trim(),
       nama: document.getElementById('u-nama').value.trim(),
-      role: document.getElementById('u-role').value
+      role: roleVal === 'admin' && isSuperadmin() ? 'admin' : 'pic'
     };
     if (!payload.username || !payload.password) return;
 
@@ -3779,7 +3873,7 @@
   }
 
   async function handleDeleteUserAccount(username) {
-    if (!isSuperadmin()) return;
+    if (!isAdminOrAbove()) return;
     if (!confirm('Hapus akun "' + username + '"?')) return;
     showLoader('Menghapus akun...');
     try {
