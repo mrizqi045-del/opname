@@ -1,0 +1,2854 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>OPNAME — Aplikasi Stock Opname</title>
+
+  <!-- Bootstrap 5 & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
+  <!-- Barcode Scanner (html5-qrcode) & Excel Parser/Exporter (SheetJS) -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+
+  <style>
+  :root {
+    --primary: #2563eb;
+    --primary-dark: #1d4ed8;
+    --slate-900: #0f172a;
+    --slate-700: #334155;
+    --slate-100: #f1f5f9;
+    --border: #e2e8f0;
+  }
+
+  body {
+    background-color: #f8fafc;
+    color: var(--slate-900);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    padding-bottom: 40px;
+  }
+
+  .app-navbar {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #fff;
+    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.15);
+    position: sticky;
+    top: 0;
+    z-index: 1030;
+  }
+
+  .brand-badge {
+    background: var(--primary);
+    color: #fff;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+  }
+
+  .nav-pills-custom {
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 0;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .nav-pills-custom .nav-link {
+    color: var(--slate-700);
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-radius: 10px;
+    padding: 8px 14px;
+    margin-right: 6px;
+    transition: all 0.15s ease;
+  }
+
+  .nav-pills-custom .nav-link:hover {
+    background: var(--slate-100);
+  }
+
+  .nav-pills-custom .nav-link.active {
+    background: var(--primary);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+  }
+
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04);
+  }
+
+  .card-header {
+    background: #fff;
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+    border-radius: 12px 12px 0 0 !important;
+    padding: 12px 16px;
+  }
+
+  .stat-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    height: 100%;
+  }
+
+  .stat-label {
+    font-size: 0.78rem;
+    color: #64748b;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+
+  .stat-value {
+    font-size: 1.45rem;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+
+  /* Camera Scanner Container */
+  #scanner-wrapper {
+    background: #0f172a;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #qr-reader {
+    width: 100%;
+  }
+
+  #qr-reader video {
+    border-radius: 8px;
+    object-fit: cover;
+  }
+
+  .scanner-placeholder {
+    color: #94a3b8;
+    text-align: center;
+    padding: 36px 16px;
+  }
+
+  /* Alert Banner for Rejected Barcode */
+  .reject-banner {
+    background: #fef2f2;
+    border: 2px solid #ef4444;
+    color: #991b1b;
+    border-radius: 12px;
+    padding: 14px 16px;
+    animation: shake 0.35s ease;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  .found-box {
+    background: #eff6ff;
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+
+  /* Table Styling */
+  .table-responsive {
+    max-height: 560px;
+    overflow-y: auto;
+  }
+
+  .table thead th {
+    position: sticky;
+    top: 0;
+    background: #f1f5f9;
+    z-index: 5;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    color: #475569;
+    white-space: nowrap;
+  }
+
+  .table td {
+    vertical-align: middle;
+    font-size: 0.88rem;
+  }
+
+  .mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85rem;
+  }
+
+  .selisih-minus {
+    color: #dc2626;
+    font-weight: 700;
+  }
+
+  .selisih-plus {
+    color: #2563eb;
+    font-weight: 700;
+  }
+
+  .selisih-zero {
+    color: #16a34a;
+    font-weight: 700;
+  }
+
+  /* Loading Overlay */
+  #global-loader {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #global-loader.show {
+    display: flex;
+  }
+
+  .loader-box {
+    background: #fff;
+    padding: 20px 28px;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    text-align: center;
+  }
+
+  .toast-container {
+    z-index: 2100;
+  }
+
+  .tab-section {
+    display: none;
+  }
+
+  .tab-section.active {
+    display: block;
+  }
+
+  /* Rak Picker Cards */
+  .rak-card {
+    background: #fff;
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.16s ease;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .rak-card:hover {
+    border-color: var(--primary);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.12);
+    transform: translateY(-2px);
+  }
+
+  .rak-card.has-scan {
+    border-left: 5px solid #16a34a;
+  }
+
+  .rak-card-title {
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--slate-900);
+  }
+
+  /* Focused Rak Workspace Header */
+  .rak-focus-banner {
+    background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%);
+    color: #fff;
+    border-radius: 14px;
+    padding: 14px 18px;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.22);
+  }
+
+  /* Mobile Bottom Navigation Bar */
+  .mobile-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -2px 12px rgba(15, 23, 42, 0.08);
+    z-index: 1040;
+    display: flex;
+    justify-content: space-around;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-bottom-nav .m-nav-btn {
+    flex: 1;
+    border: none;
+    background: transparent;
+    color: #64748b;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 4px 2px;
+    border-radius: 10px;
+    position: relative;
+    transition: color 0.15s ease;
+  }
+
+  .mobile-bottom-nav .m-nav-btn i {
+    font-size: 1.25rem;
+    line-height: 1.2;
+    margin-bottom: 2px;
+  }
+
+  .mobile-bottom-nav .m-nav-btn.active {
+    color: var(--primary);
+    background: #eff6ff;
+  }
+
+  .mobile-bottom-nav .m-nav-badge {
+    position: absolute;
+    top: 2px;
+    right: 16%;
+    font-size: 0.62rem;
+    padding: 2px 5px;
+  }
+
+  /* Mobile Responsive Adjustments */
+  @media (max-width: 767.98px) {
+    body {
+      padding-bottom: 86px;
+    }
+
+    main.container-fluid {
+      padding-left: 10px;
+      padding-right: 10px;
+      padding-top: 12px !important;
+    }
+
+    input.form-control,
+    select.form-select {
+      font-size: 16px; /* Cegah auto-zoom di HP saat tap input */
+    }
+
+    .rak-card {
+      padding: 12px;
+      border-radius: 12px;
+    }
+
+    .rak-card-title {
+      font-size: 1rem;
+    }
+
+    .rak-focus-banner {
+      padding: 12px 14px;
+      border-radius: 12px;
+    }
+
+    .rak-focus-banner .fs-4 {
+      font-size: 1.2rem !important;
+    }
+
+    #scanner-wrapper {
+      min-height: 210px;
+    }
+
+    .stat-card {
+      padding: 10px 12px;
+    }
+
+    .stat-value {
+      font-size: 1.2rem;
+    }
+
+    .table-responsive {
+      -webkit-overflow-scrolling: touch;
+      max-height: 440px;
+    }
+
+    .table td, .table th {
+      font-size: 0.8rem;
+      padding: 0.4rem 0.45rem;
+    }
+
+    .toast-container {
+      bottom: 72px !important;
+      left: 10px;
+      right: 10px;
+      padding: 0 !important;
+    }
+
+    .toast-container .toast {
+      width: 100%;
+    }
+  }
+</style>
+
+</head>
+<body>
+
+  <!-- Global Loader -->
+  <div id="global-loader">
+    <div class="loader-box">
+      <div class="spinner-border text-primary mb-2" role="status"></div>
+      <div class="fw-semibold small text-secondary" id="loader-text">Memuat data...</div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toast-container"></div>
+
+  <!-- Top Navbar -->
+  <nav class="app-navbar py-2 px-3">
+    <div class="container-fluid d-flex align-items-center justify-content-between">
+      <div class="d-flex align-items-center gap-2">
+        <span class="brand-badge"><i class="bi bi-upc-scan me-1"></i>OPNAME</span>
+        <span class="small text-secondary d-none d-sm-inline text-white-50">Stock Opname System</span>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button class="btn btn-sm btn-outline-warning position-relative d-none" id="btn-nav-unknown" onclick="switchTab('admin')">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          <span class="d-none d-sm-inline">Tidak Terdaftar</span>
+          <span class="badge bg-danger ms-1" id="badge-unknown-top">0</span>
+        </button>
+        <button class="btn btn-sm btn-outline-light" onclick="refreshAllData()" title="Muat ulang data dari Google Sheets">
+          <i class="bi bi-arrow-clockwise me-1"></i><span class="d-none d-sm-inline">Refresh</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Navigation Tabs (Desktop / Tablet) -->
+  <div class="nav-pills-custom d-none d-md-block">
+    <div class="container-fluid">
+      <ul class="nav nav-pills flex-nowrap" id="main-tabs">
+        <li class="nav-item">
+          <button class="nav-link active" data-tab="scan" onclick="switchTab('scan')">
+            <i class="bi bi-upc-scan me-1"></i>Scan Opname
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-tab="rekap" onclick="switchTab('rekap')">
+            <i class="bi bi-table me-1"></i>Rekap Opname
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-tab="admin" onclick="switchTab('admin')">
+            <i class="bi bi-gear-fill me-1"></i>Admin &amp; Rak
+            <span class="badge bg-danger ms-1 d-none" id="badge-unknown-tab">0</span>
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link" data-tab="master" onclick="switchTab('master')">
+            <i class="bi bi-cloud-upload-fill me-1"></i>Upload Master Data
+          </button>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Main Content -->
+  <main class="container-fluid py-3">
+
+    <!-- ======================================================= -->
+    <!-- TAB 1: SCAN OPNAME (PILIH RAK -> FOKUS SCAN DALAM RAK)  -->
+    <!-- ======================================================= -->
+    <section id="tab-scan" class="tab-section active">
+
+      <!-- VIEW 1: DAFTAR RAK (GRID PILIH RAK) -->
+      <div id="scan-rak-picker-view">
+        <div class="card mb-3">
+          <div class="card-body py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+              <h5 class="mb-0 fw-bold"><i class="bi bi-grid-fill me-2 text-primary"></i>Pilih Rak untuk Mulai Opname</h5>
+              <div class="small text-muted">Klik salah satu rak untuk masuk dan fokus scan barcode di dalam rak tersebut.</div>
+            </div>
+            <div class="d-flex gap-2 align-items-center w-100 w-md-auto" style="max-width: 360px;">
+              <input type="text" class="form-control form-control-sm flex-grow-1"
+                     id="rak-picker-search" placeholder="Cari nama rak..." oninput="renderRakGrid()">
+              <button class="btn btn-sm btn-outline-primary text-nowrap" onclick="switchTab('admin')">
+                <i class="bi bi-plus-lg me-1"></i>Rak
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="alert alert-warning d-none" id="no-rak-warning">
+          <i class="bi bi-exclamation-triangle-fill me-1"></i>
+          Belum ada rak yang dibuat. Silakan buat rak terlebih dahulu di menu
+          <a href="#" class="alert-link" onclick="event.preventDefault(); switchTab('admin');">Admin &amp; Rak</a>.
+        </div>
+
+        <div class="row g-3" id="rak-picker-grid">
+          <!-- Kartu rak dirender otomatis -->
+        </div>
+      </div>
+
+      <!-- VIEW 2: FOKUS DI DALAM RAK TERPILIH -->
+      <div id="scan-rak-workspace-view" class="d-none">
+        <!-- Header Banner Fokus Rak -->
+        <div class="rak-focus-banner mb-3 d-flex flex-wrap justify-content-between align-items-center gap-3">
+          <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-light fw-semibold text-primary" onclick="exitRakWorkspace()">
+              <i class="bi bi-arrow-left me-1"></i>Kembali ke Rak Lain
+            </button>
+            <div>
+              <div class="small text-white-50 text-uppercase fw-semibold" style="letter-spacing: 0.5px;">Sedang Opname di Rak</div>
+              <div class="fs-4 fw-bold lh-sm" id="focus-rak-name">-</div>
+              <div class="small text-white-50" id="focus-rak-desc"></div>
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-3">
+            <div class="text-end">
+              <div class="small text-white-50">Progress Rak Ini</div>
+              <div class="fw-bold fs-5" id="scan-rak-stats">0 scan • 0 qty</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <!-- Kiri: Kamera + Input Barcode + Form Qty -->
+          <div class="col-lg-5">
+            <div class="card mb-3">
+              <div class="card-header d-flex justify-content-between align-items-center gap-1">
+                <span><i class="bi bi-camera-video me-1 text-primary"></i>Scan di <strong id="scanner-rak-title">-</strong></span>
+                <div class="d-flex gap-1">
+                  <button class="btn btn-sm btn-outline-primary" id="btn-start-camera" onclick="startCameraScanner()">
+                    <i class="bi bi-broadcast me-1"></i>Live Kamera
+                  </button>
+                  <button class="btn btn-sm btn-danger d-none" id="btn-stop-camera" onclick="stopCameraScanner()">
+                    <i class="bi bi-stop-circle-fill me-1"></i>Stop
+                  </button>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="form-check form-switch mb-3 pb-2 border-bottom">
+                  <input class="form-check-input" type="checkbox" id="scan-auto-plus1">
+                  <label class="form-check-label small" for="scan-auto-plus1">
+                    <strong>Mode Cepat (+1 Otomatis)</strong> — langsung simpan Qty = 1 tiap scan valid
+                  </label>
+                </div>
+
+                <!-- Kontrol Kamera: otomatis adaptasi GitHub Pages (Live Realtime) vs Apps Script (Foto) -->
+                <div class="d-flex gap-2 mb-3">
+                  <button class="btn btn-primary btn-lg flex-grow-1 fw-semibold d-none align-items-center justify-content-center gap-2 py-2"
+                          id="btn-live-primary" onclick="startCameraScanner()">
+                    <i class="bi bi-camera-video-fill fs-5"></i>
+                    <span>Buka Live Kamera (Scan Otomatis)</span>
+                  </button>
+                  <button class="btn btn-danger btn-lg flex-grow-1 fw-semibold d-none align-items-center justify-content-center gap-2 py-2"
+                          id="btn-stop-primary" onclick="stopCameraScanner()">
+                    <i class="bi bi-stop-circle-fill fs-5"></i>
+                    <span>Matikan Kamera</span>
+                  </button>
+
+                  <input type="file" id="mobile-camera-input" accept="image/*" capture="environment"
+                         class="d-none" onchange="handleCameraPhotoScan(event)">
+                  <label for="mobile-camera-input" id="btn-photo-camera"
+                         class="btn btn-primary btn-lg flex-grow-1 fw-semibold d-flex align-items-center justify-content-center gap-2 py-2 mb-0">
+                    <i class="bi bi-camera-fill fs-5"></i>
+                    <span id="btn-photo-label">Scan Kamera HP (Buka Kamera)</span>
+                  </label>
+                </div>
+
+                <!-- Peringatan jika Live Kamera diblokir iframe Google Apps Script -->
+                <div class="alert alert-warning py-2 px-3 small d-none mb-3" id="camera-iframe-hint">
+                  <i class="bi bi-info-circle-fill me-1"></i>
+                  <strong>Live Kamera diblokir oleh sandbox iframe Google Apps Script.</strong>
+                  Gunakan tombol biru <strong>Scan Kamera HP</strong> di atas — bisa langsung pakai kamera belakang HP tanpa blokir.
+                </div>
+
+                <div id="scanner-wrapper" class="mb-3 d-none">
+                  <div id="qr-reader"></div>
+                  <div class="scanner-placeholder" id="scanner-placeholder">
+                    <i class="bi bi-upc-scan display-5 d-block mb-2"></i>
+                    <div class="small">Kamera live sedang disiapkan...</div>
+                  </div>
+                </div>
+
+                <!-- Input Manual / USB Scanner -->
+                <form onsubmit="handleManualBarcodeSubmit(event)" class="mb-3">
+                  <label class="form-label small fw-semibold mb-1">Input Barcode Manual / USB Scanner</label>
+                  <div class="input-group">
+                    <input type="text" class="form-control form-control-lg mono" id="scan-barcode-input"
+                           placeholder="Scan atau ketik barcode lalu Enter..." autocomplete="off">
+                    <button class="btn btn-dark px-3" type="submit">
+                      <i class="bi bi-search me-1"></i>Cek
+                    </button>
+                  </div>
+                </form>
+
+                <!-- Alert Barcode Ditolak (Tidak Terdaftar) -->
+                <div id="scan-reject-box" class="reject-banner d-none mb-3">
+                  <div class="d-flex align-items-start gap-2">
+                    <i class="bi bi-x-octagon-fill fs-4 text-danger"></i>
+                    <div class="flex-grow-1">
+                      <div class="fw-bold">BARCODE DITOLAK — TIDAK TERDAFTAR</div>
+                      <div class="small mt-1" id="scan-reject-msg"></div>
+                      <div class="small text-muted mt-1">
+                        Minta Admin menambahkan barcode ini di menu <strong>Admin &amp; Rak &gt; Barcode Tidak Terdaftar</strong>, lalu scan ulang.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Box Produk Ditemukan -> Input Qty Fisik (Blind Scan) -->
+                <div id="scan-found-box" class="found-box d-none">
+                  <div class="mb-3">
+                    <span class="badge bg-primary mb-1">Produk Terdaftar</span>
+                    <div class="fw-bold mono fs-6 text-primary" id="found-barcode">-</div>
+                    <div class="fw-bold fs-5 lh-sm mt-1" id="found-nama-barang">-</div>
+                  </div>
+
+                  <form onsubmit="handleSaveScanSubmit(event)">
+                    <div class="row g-2 align-items-end">
+                      <div class="col-5">
+                        <label class="form-label small fw-semibold mb-1">Qty Fisik</label>
+                        <input type="number" class="form-control form-control-lg fw-bold text-center"
+                               id="scan-qty-input" min="0" step="any" value="1" required>
+                      </div>
+                      <div class="col-7">
+                        <label class="form-label small fw-semibold mb-1">Keterangan (opsional)</label>
+                        <input type="text" class="form-control form-control-lg" id="scan-ket-input" placeholder="Catatan...">
+                      </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-3">
+                      <button type="submit" class="btn btn-success btn-lg flex-grow-1 fw-semibold">
+                        <i class="bi bi-check-circle-fill me-1"></i>Simpan Qty
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary" onclick="resetFoundBox()">Batal</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Kanan: Riwayat Scan Khusus Rak Ini -->
+          <div class="col-lg-7">
+            <div class="card">
+              <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+                <span>
+                  <i class="bi bi-list-check me-1 text-primary"></i>Hasil Scan di Rak:
+                  <strong id="scan-history-rak-label" class="text-primary">-</strong>
+                </span>
+                <input type="text" class="form-control form-control-sm" style="max-width: 220px;"
+                       id="scan-history-search" placeholder="Cari barcode / nama barang..." oninput="renderScanHistory()">
+              </div>
+              <div class="card-body p-0">
+                <div class="table-responsive">
+                  <table class="table table-hover table-sm mb-0">
+                    <thead>
+                      <tr>
+                        <th class="ps-3">No</th>
+                        <th>Waktu</th>
+                        <th>Barcode</th>
+                        <th>Nama Barang</th>
+                        <th class="text-end">Qty Fisik</th>
+                        <th>Ket</th>
+                        <th class="text-center pe-3">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody id="scan-history-tbody">
+                      <tr><td colspan="7" class="text-center text-muted py-4">Belum ada data scan di rak ini.</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- TAB 2: REKAP OPNAME (HASIL, SELISIH, DOWNLOAD EXCEL)    -->
+    <!-- ======================================================= -->
+    <section id="tab-rekap" class="tab-section">
+      <!-- Summary Cards -->
+      <div class="row g-2 mb-3">
+        <div class="col-6 col-md-2">
+          <div class="stat-card">
+            <div class="stat-label">Total Item</div>
+            <div class="stat-value" id="stat-total-items">0</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div class="stat-card">
+            <div class="stat-label">Sudah Discan</div>
+            <div class="stat-value text-primary" id="stat-scanned">0</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div class="stat-card">
+            <div class="stat-label">Sesuai</div>
+            <div class="stat-value text-success" id="stat-match">0</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div class="stat-card">
+            <div class="stat-label">Selisih Kurang</div>
+            <div class="stat-value text-danger" id="stat-short">0</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div class="stat-card">
+            <div class="stat-label">Selisih Lebih</div>
+            <div class="stat-value text-info" id="stat-over">0</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div class="stat-card">
+            <div class="stat-label">Nilai Selisih</div>
+            <div class="stat-value fs-5" id="stat-nilai-selisih">Rp 0</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel Upload Data Rekap Opname -->
+      <div class="card mb-3 d-none" id="rekap-upload-card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2 bg-primary-subtle">
+          <span class="fw-bold text-primary">
+            <i class="bi bi-file-earmark-arrow-up-fill me-1"></i>Upload Daftar Produk yang Akan Diopname
+          </span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-success bg-white" onclick="downloadTemplateRekapExcel()">
+              <i class="bi bi-download me-1"></i>Template Excel
+            </button>
+            <button class="btn btn-sm btn-outline-secondary bg-white" onclick="toggleRekapUploadPanel(false)">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-2">
+            Kolom template: <strong>Barcode</strong>, <strong>Nama Barang</strong>, <strong>Kategori</strong>, <strong>Harga</strong>, <strong>Qty</strong>.
+            Jika kolom <strong>Kategori</strong> kosong, sistem otomatis mengambil kategori dari <strong>Master Data</strong>.
+          </p>
+          <div class="row g-2 align-items-center mb-2">
+            <div class="col-md-6">
+              <input type="file" class="form-control" id="rekap-file-input" accept=".xlsx,.xls,.csv" onchange="handleRekapFileSelect(event)">
+            </div>
+            <div class="col-md-6 d-flex flex-wrap gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="rekap-upload-mode" id="rekap-mode-replace" value="replace" checked>
+                <label class="form-check-label small" for="rekap-mode-replace">Ganti Data Rekap Lama</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="rekap-upload-mode" id="rekap-mode-append" value="append">
+                <label class="form-check-label small" for="rekap-mode-append">Tambah / Update</label>
+              </div>
+            </div>
+          </div>
+
+          <div id="rekap-preview-box" class="d-none mt-3">
+            <div class="alert alert-info py-2 px-3 small mb-2" id="rekap-preview-summary"></div>
+            <div class="table-responsive border rounded mb-3" style="max-height: 220px;">
+              <table class="table table-sm table-striped mb-0">
+                <thead>
+                  <tr>
+                    <th>No</th>
+                    <th>Barcode</th>
+                    <th>Nama Barang</th>
+                    <th>Kategori</th>
+                    <th class="text-end">Harga</th>
+                    <th class="text-end">Qty</th>
+                  </tr>
+                </thead>
+                <tbody id="rekap-preview-tbody"></tbody>
+              </table>
+            </div>
+            <div class="d-flex gap-2">
+              <button class="btn btn-primary fw-semibold" onclick="confirmUploadRekap()">
+                <i class="bi bi-cloud-arrow-up-fill me-1"></i>Simpan Data Rekap Opname
+              </button>
+              <button class="btn btn-outline-secondary" onclick="clearRekapUploadPreview()">Batal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toolbar & Table -->
+      <div class="card">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div class="fw-bold">
+            <i class="bi bi-clipboard-data me-1 text-primary"></i>Rekap Hasil Opname &amp; Selisih
+            <span class="text-muted fw-normal small ms-1">(Selisih = Qty Opname - Qty Sistem)</span>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-primary" onclick="toggleRekapUploadPanel()">
+              <i class="bi bi-upload me-1"></i>Upload Data Opname
+            </button>
+            <button class="btn btn-sm btn-outline-success" onclick="downloadTemplateRekapExcel()">
+              <i class="bi bi-download me-1"></i>Template
+            </button>
+            <button class="btn btn-sm btn-success" onclick="exportExcelWorkbook()">
+              <i class="bi bi-file-earmark-excel-fill me-1"></i>Download Excel
+            </button>
+            <button class="btn btn-sm btn-outline-warning text-dark" onclick="confirmResetOpname()">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Reset Scan
+            </button>
+            <button class="btn btn-sm btn-outline-danger" onclick="confirmClearRekap()">
+              <i class="bi bi-trash3 me-1"></i>Hapus Rekap
+            </button>
+          </div>
+        </div>
+
+        <div class="card-body border-bottom bg-light py-2">
+          <div class="row g-2 align-items-center">
+            <div class="col-md-3">
+              <select class="form-select form-select-sm" id="rekap-filter-rak" onchange="onRekapRakFilterChange()">
+                <option value="ALL">Semua Rak (Gabungan)</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <select class="form-select form-select-sm" id="rekap-filter-status" onchange="renderRekapTable()">
+                <option value="ALL">Semua Status</option>
+                <option value="SELISIH">Ada Selisih (Kurang / Lebih)</option>
+                <option value="Kurang">Kurang (Minus)</option>
+                <option value="Lebih">Lebih (Plus)</option>
+                <option value="Sesuai">Sesuai (0)</option>
+                <option value="Sudah">Sudah Discan</option>
+                <option value="Belum Discan">Belum Discan</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <input type="text" class="form-control form-control-sm" id="rekap-search"
+                     placeholder="Cari barcode, nama barang, kategori, atau rak..." oninput="renderRekapTable()">
+            </div>
+            <div class="col-md-2 text-md-end small text-muted" id="rekap-row-count">
+              0 baris
+            </div>
+          </div>
+        </div>
+
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover table-sm mb-0">
+              <thead>
+                <tr>
+                  <th class="ps-3">No</th>
+                  <th>Barcode</th>
+                  <th>Nama Barang</th>
+                  <th>Kategori</th>
+                  <th class="text-end">Harga</th>
+                  <th class="text-end">Qty Sistem</th>
+                  <th class="text-end">Qty Opname</th>
+                  <th class="text-end">Selisih</th>
+                  <th class="text-end">Nilai Selisih</th>
+                  <th>Lokasi Rak</th>
+                  <th class="text-center pe-3">Status</th>
+                </tr>
+              </thead>
+              <tbody id="rekap-tbody">
+                <tr><td colspan="11" class="text-center text-muted py-4">Belum ada data opname. Klik <strong>Upload Data Opname</strong> di atas untuk mengupload daftar produk yang akan diopname.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- TAB 3: ADMIN & RAK + BARCODE TIDAK TERDAFTAR            -->
+    <!-- ======================================================= -->
+    <section id="tab-admin" class="tab-section">
+      <div class="row g-3">
+        <!-- Kelola Rak -->
+        <div class="col-lg-6">
+          <div class="card mb-3">
+            <div class="card-header">
+              <i class="bi bi-grid-3x3-gap-fill me-1 text-primary"></i>Buat Total Rak Sekaligus (Batch)
+            </div>
+            <div class="card-body">
+              <form onsubmit="handleGenerateBulkRak(event)">
+                <div class="row g-2">
+                  <div class="col-5">
+                    <label class="form-label small fw-semibold mb-1">Total Jumlah Rak</label>
+                    <input type="number" class="form-control" id="bulk-rak-total" min="1" max="500" value="10" required>
+                  </div>
+                  <div class="col-7">
+                    <label class="form-label small fw-semibold mb-1">Awalan Nama (Prefix)</label>
+                    <input type="text" class="form-control" id="bulk-rak-prefix" value="RAK-" placeholder="Contoh: RAK-">
+                  </div>
+                </div>
+                <div class="form-check mt-2 mb-3">
+                  <input class="form-check-input" type="checkbox" id="bulk-rak-replace">
+                  <label class="form-check-label small" for="bulk-rak-replace">
+                    Hapus daftar rak lama dan ganti dengan yang baru
+                  </label>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">
+                  <i class="bi bi-lightning-charge-fill me-1"></i>Generate Rak Sekarang
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <div class="card mb-3">
+            <div class="card-header">
+              <i class="bi bi-plus-square me-1 text-primary"></i>Tambah 1 Rak Manual
+            </div>
+            <div class="card-body">
+              <form onsubmit="handleCreateSingleRak(event)" class="row g-2">
+                <div class="col-sm-5">
+                  <input type="text" class="form-control" id="single-rak-name" placeholder="Nama Rak (cth: GUDANG-A)" required>
+                </div>
+                <div class="col-sm-5">
+                  <input type="text" class="form-control" id="single-rak-desc" placeholder="Keterangan (opsional)">
+                </div>
+                <div class="col-sm-2 d-grid">
+                  <button type="submit" class="btn btn-dark">Tambah</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-list-ol me-1 text-primary"></i>Daftar Rak Aktif</span>
+              <span class="badge bg-primary" id="admin-rak-count">0 Rak</span>
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive" style="max-height: 360px;">
+                <table class="table table-hover table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th class="ps-3">No</th>
+                      <th>Nama Rak</th>
+                      <th>Keterangan</th>
+                      <th class="text-end">Scan</th>
+                      <th class="text-end">Total Qty</th>
+                      <th class="text-center pe-3">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-rak-tbody">
+                    <tr><td colspan="6" class="text-center text-muted py-4">Belum ada rak dibuat.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Log Barcode Tidak Terdaftar -->
+        <div class="col-lg-6">
+          <div class="card border-danger">
+            <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-exclamation-octagon-fill me-1"></i>Log Barcode Tidak Terdaftar (Ditolak)</span>
+              <span class="badge bg-white text-danger" id="admin-unknown-count">0</span>
+            </div>
+            <div class="card-body border-bottom bg-light py-2 small text-secondary">
+              Barcode yang ditolak saat scan otomatis tercatat di sini. Klik <strong>+ Master</strong> untuk mendaftarkannya ke Master Data agar user bisa scan ulang.
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive" style="max-height: 540px;">
+                <table class="table table-hover table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th class="ps-3">No</th>
+                      <th>Waktu</th>
+                      <th>Barcode</th>
+                      <th>Rak</th>
+                      <th class="text-center">Coba</th>
+                      <th class="text-end pe-3">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-unknown-tbody">
+                    <tr><td colspan="6" class="text-center text-muted py-4">Tidak ada barcode yang ditolak.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================================================= -->
+    <!-- TAB 4: MASTER DATA (PUSAT DAFTAR PRODUK PERMANEN)       -->
+    <!-- ======================================================= -->
+    <section id="tab-master" class="tab-section">
+      <div class="row g-3">
+        <!-- Form Upload File Excel/CSV -->
+        <div class="col-lg-5">
+          <div class="card mb-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <span><i class="bi bi-file-earmark-spreadsheet-fill me-1 text-success"></i>Upload Master Produk (Excel / CSV)</span>
+              <button class="btn btn-sm btn-outline-success" onclick="downloadTemplateMasterExcel()">
+                <i class="bi bi-download me-1"></i>Template
+              </button>
+            </div>
+            <div class="card-body">
+              <p class="small text-muted mb-2">
+                Master Data menyimpan pusat daftar produk permanen: <strong>Barcode</strong>, <strong>Nama Barang</strong>, <strong>Kategori</strong>.
+                Upload bersifat <strong>Tambah / Update</strong> (data lama tidak dihapus).
+              </p>
+
+              <div class="mb-3">
+                <input type="file" class="form-control" id="master-file-input" accept=".xlsx,.xls,.csv" onchange="handleMasterFileSelect(event)">
+              </div>
+
+              <!-- Preview Hasil Parsing -->
+              <div id="upload-preview-box" class="d-none">
+                <div class="alert alert-info py-2 px-3 small mb-2" id="upload-preview-summary"></div>
+                <div class="table-responsive border rounded mb-3" style="max-height: 220px;">
+                  <table class="table table-sm table-striped mb-0">
+                    <thead>
+                      <tr>
+                        <th>No</th>
+                        <th>Barcode</th>
+                        <th>Nama Barang</th>
+                        <th>Kategori</th>
+                      </tr>
+                    </thead>
+                    <tbody id="upload-preview-tbody"></tbody>
+                  </table>
+                </div>
+                <div class="d-flex gap-2">
+                  <button class="btn btn-primary flex-grow-1 fw-semibold" onclick="confirmUploadMaster()">
+                    <i class="bi bi-cloud-arrow-up-fill me-1"></i>Simpan ke Master Data
+                  </button>
+                  <button class="btn btn-outline-secondary" onclick="clearUploadPreview()">Batal</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Form Tambah 1 Item Manual -->
+          <div class="card">
+            <div class="card-header">
+              <i class="bi bi-plus-circle me-1 text-primary"></i>Tambah 1 Produk ke Master
+            </div>
+            <div class="card-body">
+              <form onsubmit="handleQuickAddMaster(event)" class="row g-2">
+                <div class="col-12">
+                  <label class="form-label small mb-1">Barcode *</label>
+                  <input type="text" class="form-control mono" id="quick-barcode" required>
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-1">Nama Barang *</label>
+                  <input type="text" class="form-control" id="quick-nama" required>
+                </div>
+                <div class="col-12">
+                  <label class="form-label small mb-1">Kategori</label>
+                  <input type="text" class="form-control" id="quick-kategori" placeholder="Contoh: Minuman / Snack">
+                </div>
+                <div class="col-12 mt-2">
+                  <button type="submit" class="btn btn-dark w-100">Simpan ke Master</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabel Master Data -->
+        <div class="col-lg-7">
+          <div class="card">
+            <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+              <span>
+                <i class="bi bi-database-fill me-1 text-primary"></i>Daftar Master Produk
+                <span class="badge bg-primary ms-1" id="master-total-count">0</span>
+              </span>
+              <input type="text" class="form-control form-control-sm" style="max-width: 240px;"
+                     id="master-search" placeholder="Cari barcode / nama / kategori..." oninput="renderMasterTable()">
+            </div>
+            <div class="card-body p-0">
+              <div class="table-responsive">
+                <table class="table table-hover table-sm mb-0">
+                  <thead>
+                    <tr>
+                      <th class="ps-3">No</th>
+                      <th>Barcode</th>
+                      <th>Nama Barang</th>
+                      <th>Kategori</th>
+                      <th class="text-center pe-3">Edit</th>
+                    </tr>
+                  </thead>
+                  <tbody id="master-tbody">
+                    <tr><td colspan="5" class="text-center text-muted py-4">Master data masih kosong.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ======================================================= -->
+  <!-- MODAL: TAMBAH / EDIT MASTER DATA (dan Approve Unknown)  -->
+  <!-- ======================================================= -->
+  <div class="modal fade" id="modalMasterItem" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalMasterTitle">Tambah ke Master Data</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form onsubmit="handleSaveModalMaster(event)">
+          <div class="modal-body">
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Barcode</label>
+              <input type="text" class="form-control mono" id="modal-m-barcode" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Nama Barang</label>
+              <input type="text" class="form-control" id="modal-m-nama" required placeholder="Nama produk...">
+            </div>
+            <div class="mb-1">
+              <label class="form-label small fw-semibold">Kategori</label>
+              <input type="text" class="form-control" id="modal-m-kategori" placeholder="Kategori produk...">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-light" data-bs-dismiss="modal">Batal</button>
+            <button type="submit" class="btn btn-primary">Simpan ke Master</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================================================= -->
+  <!-- MODAL: EDIT QTY RIWAYAT SCAN                            -->
+  <!-- ======================================================= -->
+  <div class="modal fade" id="modalEditScan" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h6 class="modal-title">Edit Qty Scan</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form onsubmit="handleSaveEditScan(event)">
+          <div class="modal-body">
+            <input type="hidden" id="edit-scan-id">
+            <div class="small text-muted mb-2" id="edit-scan-info"></div>
+            <div class="mb-2">
+              <label class="form-label small fw-semibold">Qty Fisik</label>
+              <input type="number" class="form-control fw-bold" id="edit-scan-qty" min="0" step="any" required>
+            </div>
+            <div class="mb-1">
+              <label class="form-label small fw-semibold">Keterangan</label>
+              <input type="text" class="form-control" id="edit-scan-ket">
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-sm btn-light" data-bs-dismiss="modal">Batal</button>
+            <button type="submit" class="btn btn-sm btn-primary">Update</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Bottom Navigation Bar -->
+  <nav class="mobile-bottom-nav d-md-none" id="mobile-tabs">
+    <button class="m-nav-btn active" data-tab="scan" onclick="switchTab('scan')">
+      <i class="bi bi-upc-scan"></i>
+      <span>Scan</span>
+    </button>
+    <button class="m-nav-btn" data-tab="rekap" onclick="switchTab('rekap')">
+      <i class="bi bi-table"></i>
+      <span>Rekap</span>
+    </button>
+    <button class="m-nav-btn" data-tab="admin" onclick="switchTab('admin')">
+      <i class="bi bi-gear-fill"></i>
+      <span>Admin</span>
+      <span class="badge rounded-pill bg-danger m-nav-badge d-none" id="badge-unknown-mobile">0</span>
+    </button>
+    <button class="m-nav-btn" data-tab="master" onclick="switchTab('master')">
+      <i class="bi bi-cloud-upload-fill"></i>
+      <span>Master</span>
+    </button>
+  </nav>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+  /**
+   * ============================================================
+   * APLIKASI OPNAME - Client-side Script
+   * ============================================================
+   */
+
+  const APP = {
+    raks: [],
+    masterData: [],
+    rekap: { rows: [], summary: {} },
+    details: [],
+    unknowns: [],
+    selectedRak: '',
+    activeScanItem: null,
+    parsedUploadRows: [],
+    parsedRekapRows: [],
+    html5QrCode: null,
+    cameraRunning: false,
+    isCheckingBarcode: false,
+    lastScannedCode: '',
+    lastScannedAt: 0,
+    audioCtx: null
+  };
+
+  const API_URL = 'https://script.google.com/macros/s/AKfycbw44jfh3OgijSs9hVYnfMJTWy650kQUXdBbZ4a7FR1C-i4JlyehVfg8ue_HyymO1-1r/exec';
+  const IS_GAS = (typeof google !== 'undefined' && google.script && google.script.run);
+
+  let modalMasterInstance = null;
+  let modalEditScanInstance = null;
+
+  /* ============================================================
+   * INISIALISASI & SERVER BRIDGE (Apps Script & GitHub Pages API)
+   * ============================================================ */
+
+  document.addEventListener('DOMContentLoaded', function() {
+    modalMasterInstance = new bootstrap.Modal(document.getElementById('modalMasterItem'));
+    modalEditScanInstance = new bootstrap.Modal(document.getElementById('modalEditScan'));
+
+    // Jika berjalan di GitHub Pages (standalone HTTPS), jadikan Live Kamera tombol utama
+    if (!IS_GAS) {
+      const liveBtn = document.getElementById('btn-live-primary');
+      const photoBtn = document.getElementById('btn-photo-camera');
+      const photoLabel = document.getElementById('btn-photo-label');
+      const hdrStart = document.getElementById('btn-start-camera');
+      if (liveBtn) {
+        liveBtn.classList.remove('d-none');
+        liveBtn.classList.add('d-flex');
+      }
+      if (photoBtn) {
+        photoBtn.className = 'btn btn-outline-secondary btn-lg d-flex align-items-center justify-content-center px-3 mb-0';
+        photoBtn.title = 'Scan via Foto';
+      }
+      if (photoLabel) photoLabel.textContent = 'Foto';
+      if (hdrStart) hdrStart.classList.add('d-none');
+    }
+
+    refreshAllData();
+  });
+
+  function callServer(fnName, ...args) {
+    if (IS_GAS) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(resolve)
+          .withFailureHandler(err => reject(err))
+          [fnName](...args);
+      });
+    }
+
+    // Mode GitHub Pages -> POST text/plain ke Apps Script JSON API (bebas CORS preflight)
+    return fetch(API_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: fnName, args: args })
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(json => {
+        if (!json || json.ok === false) {
+          throw new Error((json && json.error) || 'Gagal memproses di server.');
+        }
+        return json.data;
+      });
+  }
+
+  function showLoader(text) {
+    document.getElementById('loader-text').textContent = text || 'Memproses...';
+    document.getElementById('global-loader').classList.add('show');
+  }
+
+  function hideLoader() {
+    document.getElementById('global-loader').classList.remove('show');
+  }
+
+  function showToast(message, type) {
+    const bg = type === 'danger' ? 'text-bg-danger'
+             : type === 'warning' ? 'text-bg-warning'
+             : type === 'info' ? 'text-bg-info'
+             : 'text-bg-success';
+    const container = document.getElementById('toast-container');
+    const el = document.createElement('div');
+    el.className = 'toast align-items-center border-0 ' + bg;
+    el.setAttribute('role', 'alert');
+    el.innerHTML =
+      '<div class="d-flex">' +
+        '<div class="toast-body fw-semibold small">' + escapeHtml(message) + '</div>' +
+        '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>' +
+      '</div>';
+    container.appendChild(el);
+    const toast = new bootstrap.Toast(el, { delay: 3200 });
+    toast.show();
+    el.addEventListener('hidden.bs.toast', () => el.remove());
+  }
+
+  function escapeHtml(str) {
+    return String(str === null || str === undefined ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function jsArg(str) {
+    return escapeHtml(JSON.stringify(String(str === null || str === undefined ? '' : str)));
+  }
+
+  function formatRupiah(num) {
+    const n = Number(num) || 0;
+    const prefix = n < 0 ? '-Rp ' : 'Rp ';
+    return prefix + Math.abs(Math.round(n)).toLocaleString('id-ID');
+  }
+
+  function formatNumber(num) {
+    const n = Number(num) || 0;
+    return n.toLocaleString('id-ID');
+  }
+
+  function playBeep(type) {
+    try {
+      if (!APP.audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        APP.audioCtx = new AudioContext();
+      }
+      if (APP.audioCtx.state === 'suspended') {
+        APP.audioCtx.resume();
+      }
+      const now = APP.audioCtx.currentTime;
+      if (type === 'ok') {
+        const osc = APP.audioCtx.createOscillator();
+        const gain = APP.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1050, now);
+        gain.gain.setValueAtTime(0.18, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+        osc.connect(gain);
+        gain.connect(APP.audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.14);
+      } else {
+        // Error double buzz
+        [0, 0.18].forEach(offset => {
+          const osc = APP.audioCtx.createOscillator();
+          const gain = APP.audioCtx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(220, now + offset);
+          gain.gain.setValueAtTime(0.22, now + offset);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.15);
+          osc.connect(gain);
+          gain.connect(APP.audioCtx.destination);
+          osc.start(now + offset);
+          osc.stop(now + offset + 0.16);
+        });
+      }
+    } catch (e) {
+      // Abaikan jika browser blokir audio
+    }
+  }
+
+  async function refreshAllData() {
+    showLoader('Memuat data dari Google Sheets...');
+    try {
+      const state = await callServer('getInitialState');
+      APP.raks = state.raks || [];
+      APP.masterData = state.masterData || [];
+      APP.rekap = state.rekap || { rows: [], summary: {} };
+      APP.details = state.details || [];
+      APP.unknowns = state.unknowns || [];
+      renderAll();
+    } catch (err) {
+      showToast('Gagal memuat data: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  function renderAll() {
+    renderRakDropdowns();
+    renderAdminRakTable();
+    renderUnknownTable();
+    renderScanHistory();
+    renderRekapTable();
+    renderMasterTable();
+    updateUnknownBadges();
+  }
+
+  /* ============================================================
+   * NAVIGASI TAB
+   * ============================================================ */
+
+  function switchTab(tabName) {
+    if (tabName !== 'scan' && APP.cameraRunning) {
+      stopCameraScanner();
+    }
+    document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('#main-tabs .nav-link').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#mobile-tabs .m-nav-btn').forEach(b => b.classList.remove('active'));
+
+    const sec = document.getElementById('tab-' + tabName);
+    const btn = document.querySelector('#main-tabs .nav-link[data-tab="' + tabName + '"]');
+    const mBtn = document.querySelector('#mobile-tabs .m-nav-btn[data-tab="' + tabName + '"]');
+    if (sec) sec.classList.add('active');
+    if (btn) btn.classList.add('active');
+    if (mBtn) mBtn.classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+
+  function updateUnknownBadges() {
+    const count = APP.unknowns.length;
+    const topBtn = document.getElementById('btn-nav-unknown');
+    const topBadge = document.getElementById('badge-unknown-top');
+    const tabBadge = document.getElementById('badge-unknown-tab');
+    const mobBadge = document.getElementById('badge-unknown-mobile');
+    const adminBadge = document.getElementById('admin-unknown-count');
+
+    topBadge.textContent = count;
+    tabBadge.textContent = count;
+    if (mobBadge) mobBadge.textContent = count;
+    adminBadge.textContent = count;
+
+    if (count > 0) {
+      topBtn.classList.remove('d-none');
+      tabBadge.classList.remove('d-none');
+      if (mobBadge) mobBadge.classList.remove('d-none');
+    } else {
+      topBtn.classList.add('d-none');
+      tabBadge.classList.add('d-none');
+      if (mobBadge) mobBadge.classList.add('d-none');
+    }
+  }
+
+  /* ============================================================
+   * TAB 1: SCAN OPNAME (PILIH RAK -> FOKUS SCAN DALAM RAK)
+   * ============================================================ */
+
+  function renderRakDropdowns() {
+    const rekapSel = document.getElementById('rekap-filter-rak');
+    const prevRekap = rekapSel.value || 'ALL';
+
+    let rekapHtml = '<option value="ALL">Semua Rak (Gabungan)</option>';
+    APP.raks.forEach(r => {
+      const esc = escapeHtml(r.nama_rak);
+      rekapHtml += '<option value="' + esc + '">' + esc + '</option>';
+    });
+    rekapSel.innerHTML = rekapHtml;
+
+    if (prevRekap === 'ALL' || APP.raks.some(r => r.nama_rak === prevRekap)) {
+      rekapSel.value = prevRekap;
+    } else {
+      rekapSel.value = 'ALL';
+    }
+
+    // Jika rak yang sedang dibuka ternyata sudah dihapus, keluar ke daftar rak
+    if (APP.selectedRak && !APP.raks.some(r => r.nama_rak === APP.selectedRak)) {
+      exitRakWorkspace();
+    }
+
+    renderRakGrid();
+    updateScanRakStats();
+  }
+
+  function renderRakGrid() {
+    const grid = document.getElementById('rak-picker-grid');
+    const warn = document.getElementById('no-rak-warning');
+    const q = (document.getElementById('rak-picker-search').value || '').trim().toLowerCase();
+
+    if (APP.raks.length === 0) {
+      warn.classList.remove('d-none');
+      grid.innerHTML = '';
+      return;
+    }
+    warn.classList.add('d-none');
+
+    let list = APP.raks;
+    if (q) {
+      list = list.filter(r =>
+        r.nama_rak.toLowerCase().includes(q) ||
+        (r.deskripsi || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (list.length === 0) {
+      grid.innerHTML = '<div class="col-12 text-center text-muted py-4">Rak tidak ditemukan.</div>';
+      return;
+    }
+
+    grid.innerHTML = list.map(r => {
+      const hasScan = (r.total_scan || 0) > 0;
+      const statusBadge = hasScan
+        ? '<span class="badge bg-success-subtle text-success border border-success-subtle">Sudah scan</span>'
+        : '<span class="badge bg-light text-secondary border">Belum</span>';
+
+      return (
+        '<div class="col-6 col-sm-4 col-md-3 col-lg-3">' +
+          '<div class="rak-card ' + (hasScan ? 'has-scan' : '') + '" onclick="openRakWorkspace(' + jsArg(r.nama_rak) + ')">' +
+            '<div>' +
+              '<div class="d-flex justify-content-between align-items-start gap-1 mb-1">' +
+                '<div class="rak-card-title text-truncate">' + escapeHtml(r.nama_rak) + '</div>' +
+                statusBadge +
+              '</div>' +
+              '<div class="small text-muted text-truncate mb-3">' + escapeHtml(r.deskripsi || 'Tap untuk masuk rak') + '</div>' +
+            '</div>' +
+            '<div class="d-flex justify-content-between align-items-center pt-2 border-top small">' +
+              '<span class="text-secondary"><strong>' + formatNumber(r.total_scan || 0) + '</strong> scan</span>' +
+              '<span class="fw-bold text-primary">' + formatNumber(r.total_qty || 0) + ' qty <i class="bi bi-chevron-right"></i></span>' +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  function openRakWorkspace(namaRak) {
+    const rakObj = APP.raks.find(r => r.nama_rak === namaRak);
+    if (!rakObj) return;
+
+    APP.selectedRak = rakObj.nama_rak;
+    resetFoundBox();
+    hideRejectBox();
+    document.getElementById('scan-barcode-input').value = '';
+    document.getElementById('scan-history-search').value = '';
+
+    document.getElementById('focus-rak-name').textContent = rakObj.nama_rak;
+    document.getElementById('focus-rak-desc').textContent = rakObj.deskripsi || '';
+    document.getElementById('scanner-rak-title').textContent = rakObj.nama_rak;
+    document.getElementById('scan-history-rak-label').textContent = rakObj.nama_rak;
+
+    document.getElementById('scan-rak-picker-view').classList.add('d-none');
+    document.getElementById('scan-rak-workspace-view').classList.remove('d-none');
+
+    renderScanHistory();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function exitRakWorkspace() {
+    if (APP.cameraRunning) {
+      stopCameraScanner();
+    }
+    APP.selectedRak = '';
+    resetFoundBox();
+    hideRejectBox();
+    document.getElementById('scan-barcode-input').value = '';
+
+    document.getElementById('scan-rak-workspace-view').classList.add('d-none');
+    document.getElementById('scan-rak-picker-view').classList.remove('d-none');
+
+    renderRakGrid();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function updateScanRakStats() {
+    const label = document.getElementById('scan-history-rak-label');
+    const badge = document.getElementById('scan-rak-stats');
+    if (!APP.selectedRak) {
+      label.textContent = '-';
+      badge.textContent = '0 scan • 0 qty';
+      return;
+    }
+    label.textContent = APP.selectedRak;
+    const filtered = APP.details.filter(d => d.rak === APP.selectedRak);
+    const totalQty = filtered.reduce((s, d) => s + (Number(d.qty_fisik) || 0), 0);
+    badge.textContent = filtered.length + ' scan • ' + formatNumber(totalQty) + ' qty';
+  }
+
+  const BARCODE_FORMATS = [
+    Html5QrcodeSupportedFormats.EAN_13,
+    Html5QrcodeSupportedFormats.EAN_8,
+    Html5QrcodeSupportedFormats.CODE_128,
+    Html5QrcodeSupportedFormats.CODE_39,
+    Html5QrcodeSupportedFormats.CODE_93,
+    Html5QrcodeSupportedFormats.UPC_A,
+    Html5QrcodeSupportedFormats.UPC_E,
+    Html5QrcodeSupportedFormats.ITF,
+    Html5QrcodeSupportedFormats.CODABAR,
+    Html5QrcodeSupportedFormats.QR_CODE
+  ];
+
+  function loadImageFileToCanvas(file, maxDim) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = function() {
+        URL.revokeObjectURL(url);
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if (w > maxDim || h > maxDim) {
+          const scale = maxDim / Math.max(w, h);
+          w = Math.round(w * scale);
+          h = Math.round(h * scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas);
+      };
+      img.onerror = function() {
+        URL.revokeObjectURL(url);
+        reject(new Error('Gagal membaca gambar kamera.'));
+      };
+      img.src = url;
+    });
+  }
+
+  function canvasToJpegFile(canvas, name) {
+    return new Promise((resolve, reject) => {
+      canvas.toBlob(blob => {
+        if (!blob) return reject(new Error('Konversi gambar gagal.'));
+        resolve(new File([blob], name || 'scan.jpg', { type: 'image/jpeg' }));
+      }, 'image/jpeg', 0.92);
+    });
+  }
+
+  /**
+   * Scan barcode via Kamera Asli HP (input capture="environment")
+   * Tidak terpengaruh blokir iframe Google Apps Script!
+   */
+  async function handleCameraPhotoScan(event) {
+    const input = event.target;
+    const file = input.files && input.files[0];
+    input.value = '';
+    if (!file) return;
+
+    if (!APP.selectedRak) {
+      showToast('Pilih rak terlebih dahulu.', 'warning');
+      return;
+    }
+
+    showLoader('Membaca barcode dari foto...');
+    let decoded = '';
+
+    try {
+      const canvas = await loadImageFileToCanvas(file, 1400);
+
+      // 1. Coba Native BarcodeDetector (super cepat & akurat di Chrome Android)
+      if ('BarcodeDetector' in window) {
+        try {
+          const detector = new BarcodeDetector({
+            formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'code_93', 'upc_a', 'upc_e', 'itf', 'codabar', 'qr_code']
+          });
+          const results = await detector.detect(canvas);
+          if (results && results.length > 0 && results[0].rawValue) {
+            decoded = String(results[0].rawValue).trim();
+          }
+        } catch (detErr) {
+          // Lanjut ke fallback Html5Qrcode
+        }
+      }
+
+      // 2. Fallback: Html5Qrcode.scanFile pada gambar hasil resize
+      if (!decoded) {
+        if (APP.cameraRunning) {
+          await stopCameraScanner();
+        }
+        if (!APP.html5QrCode) {
+          APP.html5QrCode = new Html5Qrcode('qr-reader', { formatsToSupport: BARCODE_FORMATS, verbose: false });
+        }
+        try {
+          const resizedFile = await canvasToJpegFile(canvas, 'barcode.jpg');
+          decoded = await APP.html5QrCode.scanFile(resizedFile, false);
+        } catch (e1) {
+          try {
+            decoded = await APP.html5QrCode.scanFile(file, false);
+          } catch (e2) {
+            decoded = '';
+          }
+        }
+      }
+    } catch (err) {
+      decoded = '';
+    } finally {
+      hideLoader();
+    }
+
+    if (decoded) {
+      document.getElementById('scan-barcode-input').value = decoded;
+      processBarcodeLookup(decoded);
+    } else {
+      playBeep('error');
+      showToast('Barcode tidak terbaca di foto. Pastikan fokus jelas, cukup cahaya, dan barcode memenuhi bingkai.', 'warning');
+    }
+  }
+
+  async function startCameraScanner() {
+    if (!APP.selectedRak) {
+      showToast('Pilih rak terlebih dahulu sebelum membuka kamera.', 'warning');
+      return;
+    }
+    if (APP.cameraRunning) return;
+
+    const wrapper = document.getElementById('scanner-wrapper');
+    const placeholder = document.getElementById('scanner-placeholder');
+    const hint = document.getElementById('camera-iframe-hint');
+    hint.classList.add('d-none');
+    wrapper.classList.remove('d-none');
+    placeholder.classList.add('d-none');
+
+    try {
+      if (!APP.html5QrCode) {
+        APP.html5QrCode = new Html5Qrcode('qr-reader', {
+          formatsToSupport: BARCODE_FORMATS,
+          experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+          verbose: false
+        });
+      }
+
+      const wrapperW = wrapper.clientWidth || 300;
+      const boxW = Math.min(300, Math.max(200, Math.floor(wrapperW * 0.84)));
+      const boxH = Math.min(160, Math.max(105, Math.floor(boxW * 0.52)));
+
+      const config = {
+        fps: 12,
+        qrbox: { width: boxW, height: boxH },
+        formatsToSupport: BARCODE_FORMATS
+      };
+
+      const onDecoded = (decodedText) => {
+        const now = Date.now();
+        if (APP.isCheckingBarcode) return;
+        if (decodedText === APP.lastScannedCode && (now - APP.lastScannedAt) < 1800) {
+          return;
+        }
+        APP.lastScannedCode = decodedText;
+        APP.lastScannedAt = now;
+        document.getElementById('scan-barcode-input').value = decodedText;
+        processBarcodeLookup(decodedText);
+      };
+
+      try {
+        await APP.html5QrCode.start({ facingMode: 'environment' }, config, onDecoded, () => {});
+      } catch (envErr) {
+        const cameras = await Html5Qrcode.getCameras();
+        if (!cameras || cameras.length === 0) {
+          throw envErr;
+        }
+        await APP.html5QrCode.start(cameras[0].id, config, onDecoded, () => {});
+      }
+
+      APP.cameraRunning = true;
+      document.getElementById('btn-start-camera').classList.add('d-none');
+      document.getElementById('btn-stop-camera').classList.remove('d-none');
+      if (!IS_GAS) {
+        const liveBtn = document.getElementById('btn-live-primary');
+        const stopBtn = document.getElementById('btn-stop-primary');
+        if (liveBtn) { liveBtn.classList.add('d-none'); liveBtn.classList.remove('d-flex'); }
+        if (stopBtn) { stopBtn.classList.remove('d-none'); stopBtn.classList.add('d-flex'); }
+      }
+    } catch (err) {
+      wrapper.classList.add('d-none');
+      placeholder.classList.remove('d-none');
+      const errMsg = String((err && err.message) || err || '');
+      if (IS_GAS && /denied|notallowed|permission/i.test(errMsg)) {
+        hint.classList.remove('d-none');
+        showToast('Live Kamera diblokir iframe Google Apps Script. Pakai tombol "Scan Kamera HP" di atas.', 'warning');
+      } else {
+        showToast('Gagal membuka Live Kamera: ' + errMsg, 'danger');
+      }
+    }
+  }
+
+  async function stopCameraScanner() {
+    if (!APP.html5QrCode || !APP.cameraRunning) return;
+    try {
+      await APP.html5QrCode.stop();
+      await APP.html5QrCode.clear();
+    } catch (e) {
+      // Abaikan error saat stop
+    }
+    APP.cameraRunning = false;
+    if (IS_GAS) {
+      document.getElementById('btn-start-camera').classList.remove('d-none');
+    } else {
+      const liveBtn = document.getElementById('btn-live-primary');
+      const stopBtn = document.getElementById('btn-stop-primary');
+      if (liveBtn) { liveBtn.classList.remove('d-none'); liveBtn.classList.add('d-flex'); }
+      if (stopBtn) { stopBtn.classList.add('d-none'); stopBtn.classList.remove('d-flex'); }
+    }
+    document.getElementById('btn-stop-camera').classList.add('d-none');
+    document.getElementById('scanner-wrapper').classList.add('d-none');
+    document.getElementById('scanner-placeholder').classList.remove('d-none');
+  }
+
+  function handleManualBarcodeSubmit(e) {
+    e.preventDefault();
+    const input = document.getElementById('scan-barcode-input');
+    const code = input.value.trim();
+    if (!code) return;
+    processBarcodeLookup(code);
+  }
+
+  async function processBarcodeLookup(barcode) {
+    if (!APP.selectedRak) {
+      playBeep('error');
+      showToast('Pilih rak terlebih dahulu!', 'warning');
+      return;
+    }
+    if (APP.isCheckingBarcode) return;
+
+    APP.isCheckingBarcode = true;
+    hideRejectBox();
+    showLoader('Cek barcode ' + barcode + '...');
+
+    try {
+      const res = await callServer('checkBarcodeForScan', barcode, APP.selectedRak);
+      if (!res.success) {
+        playBeep('error');
+        showToast(res.message || 'Gagal cek barcode.', 'warning');
+        return;
+      }
+
+      // OPSI 3: Barcode tidak terdaftar -> TOLAK & tampilkan alert merah
+      if (!res.found) {
+        playBeep('error');
+        resetFoundBox();
+        showRejectBox(res.message);
+        if (res.unknowns) {
+          APP.unknowns = res.unknowns;
+          renderUnknownTable();
+          updateUnknownBadges();
+        }
+        document.getElementById('scan-barcode-input').value = '';
+        document.getElementById('scan-barcode-input').focus();
+        return;
+      }
+
+      // Barcode terdaftar
+      playBeep('ok');
+      const autoPlus1 = document.getElementById('scan-auto-plus1').checked;
+
+      if (autoPlus1) {
+        // Mode cepat: langsung simpan Qty = 1
+        showLoader('Menyimpan +1 (' + res.item.barcode + ')...');
+        const saveRes = await callServer('saveOpnameScan', {
+          rak: APP.selectedRak,
+          barcode: res.item.barcode,
+          qty_fisik: 1,
+          keterangan: ''
+        });
+        if (saveRes.success) {
+          APP.raks = saveRes.raks;
+          APP.details = saveRes.details;
+          APP.rekap = saveRes.rekap;
+          renderAll();
+          showToast(saveRes.message, 'success');
+          document.getElementById('scan-barcode-input').value = '';
+          document.getElementById('scan-barcode-input').focus();
+        } else {
+          playBeep('error');
+          showToast(saveRes.message, 'danger');
+        }
+      } else {
+        // Mode input manual qty (blind scan: tampilkan Barcode + Nama Barang saja)
+        APP.activeScanItem = res.item;
+        document.getElementById('found-barcode').textContent = res.item.barcode;
+        document.getElementById('found-nama-barang').textContent = res.item.nama_barang || '-';
+        document.getElementById('scan-qty-input').value = 1;
+        document.getElementById('scan-ket-input').value = '';
+        document.getElementById('scan-found-box').classList.remove('d-none');
+
+        const qtyEl = document.getElementById('scan-qty-input');
+        qtyEl.focus();
+        qtyEl.select();
+      }
+    } catch (err) {
+      playBeep('error');
+      showToast('Error: ' + (err.message || err), 'danger');
+    } finally {
+      APP.isCheckingBarcode = false;
+      hideLoader();
+    }
+  }
+
+  async function handleSaveScanSubmit(e) {
+    e.preventDefault();
+    if (!APP.activeScanItem || !APP.selectedRak) return;
+
+    const qty = Number(document.getElementById('scan-qty-input').value);
+    const ket = document.getElementById('scan-ket-input').value.trim();
+
+    if (isNaN(qty) || qty < 0) {
+      showToast('Qty fisik harus angka >= 0.', 'warning');
+      return;
+    }
+
+    showLoader('Menyimpan hasil scan...');
+    try {
+      const res = await callServer('saveOpnameScan', {
+        rak: APP.selectedRak,
+        barcode: APP.activeScanItem.barcode,
+        qty_fisik: qty,
+        keterangan: ket
+      });
+
+      if (!res.success) {
+        playBeep('error');
+        if (res.rejected) {
+          showRejectBox(res.message);
+          if (res.unknowns) {
+            APP.unknowns = res.unknowns;
+            renderUnknownTable();
+            updateUnknownBadges();
+          }
+        } else {
+          showToast(res.message, 'danger');
+        }
+        return;
+      }
+
+      playBeep('ok');
+      APP.raks = res.raks;
+      APP.details = res.details;
+      APP.rekap = res.rekap;
+      renderAll();
+      showToast(res.message, 'success');
+      resetFoundBox();
+      const bcInput = document.getElementById('scan-barcode-input');
+      bcInput.value = '';
+      bcInput.focus();
+    } catch (err) {
+      showToast('Gagal menyimpan: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  function showRejectBox(msg) {
+    document.getElementById('scan-reject-msg').textContent = msg;
+    document.getElementById('scan-reject-box').classList.remove('d-none');
+  }
+
+  function hideRejectBox() {
+    document.getElementById('scan-reject-box').classList.add('d-none');
+  }
+
+  function resetFoundBox() {
+    APP.activeScanItem = null;
+    document.getElementById('scan-found-box').classList.add('d-none');
+  }
+
+  function renderScanHistory() {
+    const tbody = document.getElementById('scan-history-tbody');
+    const q = (document.getElementById('scan-history-search').value || '').trim().toLowerCase();
+
+    if (!APP.selectedRak) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Pilih rak terlebih dahulu.</td></tr>';
+      updateScanRakStats();
+      return;
+    }
+
+    let rows = APP.details.filter(d => d.rak === APP.selectedRak);
+    if (q) {
+      rows = rows.filter(d =>
+        d.barcode.toLowerCase().includes(q) ||
+        (d.nama_barang || '').toLowerCase().includes(q)
+      );
+    }
+
+    // Tampilkan terbaru di atas
+    rows.reverse();
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Belum ada data scan di rak ini.</td></tr>';
+      updateScanRakStats();
+      return;
+    }
+
+    tbody.innerHTML = rows.map((d, idx) =>
+      '<tr>' +
+        '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
+        '<td class="small text-muted text-nowrap">' + escapeHtml(d.timestamp.slice(11, 19) || d.timestamp) + '</td>' +
+        '<td class="mono fw-semibold">' + escapeHtml(d.barcode) + '</td>' +
+        '<td class="fw-semibold">' + escapeHtml(d.nama_barang || '-') + '</td>' +
+        '<td class="text-end fw-bold text-primary">' + formatNumber(d.qty_fisik) + '</td>' +
+        '<td class="small text-muted">' + escapeHtml(d.keterangan || '-') + '</td>' +
+        '<td class="text-center pe-3 text-nowrap">' +
+          '<button class="btn btn-sm btn-outline-primary py-0 px-2 me-1" onclick="openEditScanModal(' + jsArg(d.id_scan) + ')" title="Edit Qty">' +
+            '<i class="bi bi-pencil"></i>' +
+          '</button>' +
+          '<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteScanEntry(' + jsArg(d.id_scan) + ')" title="Hapus">' +
+            '<i class="bi bi-trash"></i>' +
+          '</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+
+    updateScanRakStats();
+  }
+
+  function openEditScanModal(idScan) {
+    const item = APP.details.find(d => d.id_scan === idScan);
+    if (!item) return;
+    document.getElementById('edit-scan-id').value = item.id_scan;
+    document.getElementById('edit-scan-info').textContent = item.rak + ' • ' + item.barcode + ' — ' + (item.nama_barang || item.kategori);
+    document.getElementById('edit-scan-qty').value = item.qty_fisik;
+    document.getElementById('edit-scan-ket').value = item.keterangan || '';
+    modalEditScanInstance.show();
+  }
+
+  async function handleSaveEditScan(e) {
+    e.preventDefault();
+    const id = document.getElementById('edit-scan-id').value;
+    const qty = Number(document.getElementById('edit-scan-qty').value);
+    const ket = document.getElementById('edit-scan-ket').value.trim();
+
+    showLoader('Memperbarui qty...');
+    try {
+      const res = await callServer('updateOpnameDetailQty', id, qty, ket);
+      if (res.success) {
+        APP.raks = res.raks;
+        APP.details = res.details;
+        APP.rekap = res.rekap;
+        renderAll();
+        modalEditScanInstance.hide();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err) {
+      showToast('Gagal update: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function deleteScanEntry(idScan) {
+    if (!confirm('Hapus baris scan ini?')) return;
+    showLoader('Menghapus scan...');
+    try {
+      const res = await callServer('deleteOpnameDetail', idScan);
+      if (res.success) {
+        APP.raks = res.raks;
+        APP.details = res.details;
+        APP.rekap = res.rekap;
+        renderAll();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err) {
+      showToast('Gagal menghapus: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  /* ============================================================
+   * TAB 2: REKAP OPNAME & SELISIH + EXPORT EXCEL
+   * ============================================================ */
+
+  async function onRekapRakFilterChange() {
+    const rak = document.getElementById('rekap-filter-rak').value;
+    showLoader('Menghitung rekap...');
+    try {
+      APP.rekap = await callServer('getOpnameRekap', rak);
+      renderRekapTable();
+    } catch (err) {
+      showToast('Gagal memuat rekap: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  function getFilteredRekapRows() {
+    const statusFilter = document.getElementById('rekap-filter-status').value;
+    const q = (document.getElementById('rekap-search').value || '').trim().toLowerCase();
+    const rows = (APP.rekap && APP.rekap.rows) ? APP.rekap.rows : [];
+
+    return rows.filter(r => {
+      if (statusFilter === 'SELISIH' && r.selisih === 0) return false;
+      if (statusFilter === 'Kurang' && r.selisih >= 0) return false;
+      if (statusFilter === 'Lebih' && r.selisih <= 0) return false;
+      if (statusFilter === 'Sesuai' && r.status !== 'Sesuai') return false;
+      if (statusFilter === 'Sudah' && !r.scanned) return false;
+      if (statusFilter === 'Belum Discan' && r.scanned) return false;
+
+      if (q) {
+        const match = r.barcode.toLowerCase().includes(q)
+                   || (r.nama_barang || '').toLowerCase().includes(q)
+                   || (r.kategori || '').toLowerCase().includes(q)
+                   || (r.lokasi_rak || '').toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderRekapTable() {
+    const sum = (APP.rekap && APP.rekap.summary) || {};
+    document.getElementById('stat-total-items').textContent = formatNumber(sum.totalItems || 0);
+    document.getElementById('stat-scanned').textContent = formatNumber(sum.scannedItems || 0);
+    document.getElementById('stat-match').textContent = formatNumber(sum.matchItems || 0);
+    document.getElementById('stat-short').textContent = formatNumber(sum.shortItems || 0);
+    document.getElementById('stat-over').textContent = formatNumber(sum.overItems || 0);
+
+    const nilaiEl = document.getElementById('stat-nilai-selisih');
+    const nilai = sum.totalNilaiSelisih || 0;
+    nilaiEl.textContent = formatRupiah(nilai);
+    nilaiEl.className = 'stat-value fs-5 ' + (nilai < 0 ? 'text-danger' : nilai > 0 ? 'text-primary' : 'text-success');
+
+    const filtered = getFilteredRekapRows();
+    document.getElementById('rekap-row-count').textContent = filtered.length + ' baris';
+
+    const tbody = document.getElementById('rekap-tbody');
+    if (filtered.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-4">Tidak ada data yang cocok.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filtered.map((r, idx) => {
+      const selClass = r.selisih < 0 ? 'selisih-minus' : r.selisih > 0 ? 'selisih-plus' : 'selisih-zero';
+      const selText = (r.selisih > 0 ? '+' : '') + formatNumber(r.selisih);
+      let badgeHtml = '<span class="badge bg-secondary">Belum Discan</span>';
+      if (r.status === 'Sesuai') badgeHtml = '<span class="badge bg-success">Sesuai</span>';
+      else if (r.status === 'Kurang') badgeHtml = '<span class="badge bg-danger">Kurang</span>';
+      else if (r.status === 'Lebih') badgeHtml = '<span class="badge bg-primary">Lebih</span>';
+
+      return (
+        '<tr>' +
+          '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
+          '<td class="mono fw-semibold">' + escapeHtml(r.barcode) + '</td>' +
+          '<td class="fw-semibold">' + escapeHtml(r.nama_barang || '-') + '</td>' +
+          '<td>' + escapeHtml(r.kategori || '-') + '</td>' +
+          '<td class="text-end text-nowrap">' + formatRupiah(r.harga) + '</td>' +
+          '<td class="text-end fw-semibold">' + formatNumber(r.qty_sistem) + '</td>' +
+          '<td class="text-end fw-bold text-primary">' + formatNumber(r.qty_opname) + '</td>' +
+          '<td class="text-end ' + selClass + '">' + selText + '</td>' +
+          '<td class="text-end text-nowrap ' + selClass + '">' + formatRupiah(r.nilai_selisih) + '</td>' +
+          '<td class="small text-muted">' + escapeHtml(r.lokasi_rak) + '</td>' +
+          '<td class="text-center pe-3">' + badgeHtml + '</td>' +
+        '</tr>'
+      );
+    }).join('');
+  }
+
+  function exportExcelWorkbook() {
+    const rekapRows = getFilteredRekapRows();
+    if (rekapRows.length === 0 && APP.details.length === 0) {
+      showToast('Tidak ada data untuk diexport.', 'warning');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: Rekap Opname
+    const sheet1Data = rekapRows.map((r, idx) => ({
+      'No': idx + 1,
+      'Barcode': String(r.barcode),
+      'Nama Barang': r.nama_barang || '-',
+      'Kategori': r.kategori || '-',
+      'Harga': r.harga,
+      'Qty Sistem': r.qty_sistem,
+      'Qty Opname': r.qty_opname,
+      'Selisih': r.selisih,
+      'Nilai Selisih': r.nilai_selisih,
+      'Lokasi Rak': r.lokasi_rak,
+      'Status': r.status
+    }));
+    const ws1 = XLSX.utils.json_to_sheet(sheet1Data);
+    ws1['!cols'] = [
+      { wch: 6 }, { wch: 18 }, { wch: 28 }, { wch: 18 }, { wch: 14 },
+      { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 26 }, { wch: 14 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Rekap Opname');
+
+    // Sheet 2: Detail Scan Per Rak
+    const sheet2Data = APP.details.map((d, idx) => ({
+      'No': idx + 1,
+      'Waktu': d.timestamp,
+      'Rak': d.rak,
+      'Barcode': String(d.barcode),
+      'Nama Barang': d.nama_barang || '-',
+      'Qty Fisik': d.qty_fisik,
+      'Keterangan': d.keterangan
+    }));
+    const ws2 = XLSX.utils.json_to_sheet(sheet2Data.length ? sheet2Data : [{ 'Info': 'Belum ada scan' }]);
+    ws2['!cols'] = [
+      { wch: 6 }, { wch: 20 }, { wch: 14 }, { wch: 18 },
+      { wch: 28 }, { wch: 12 }, { wch: 24 }
+    ];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Detail Per Rak');
+
+    // Sheet 3: Barcode Tidak Terdaftar
+    const sheet3Data = APP.unknowns.map((u, idx) => ({
+      'No': idx + 1,
+      'Waktu': u.timestamp,
+      'Barcode': String(u.barcode),
+      'Rak': u.rak,
+      'Jumlah Percobaan': u.percobaan
+    }));
+    const ws3 = XLSX.utils.json_to_sheet(sheet3Data.length ? sheet3Data : [{ 'Info': 'Tidak ada barcode ditolak' }]);
+    ws3['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 18 }, { wch: 14 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(wb, ws3, 'Tidak Terdaftar');
+
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const fname = 'Hasil_Opname_' + now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
+                  '_' + pad(now.getHours()) + pad(now.getMinutes()) + '.xlsx';
+
+    XLSX.writeFile(wb, fname);
+    showToast('File Excel berhasil didownload: ' + fname, 'success');
+  }
+
+  function toggleRekapUploadPanel(forceState) {
+    const card = document.getElementById('rekap-upload-card');
+    const show = typeof forceState === 'boolean' ? forceState : card.classList.contains('d-none');
+    if (show) {
+      card.classList.remove('d-none');
+      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      card.classList.add('d-none');
+      clearRekapUploadPreview();
+    }
+  }
+
+  function downloadTemplateRekapExcel() {
+    const headers = [['Barcode', 'Nama Barang', 'Kategori', 'Harga', 'Qty']];
+    const ws = XLSX.utils.aoa_to_sheet(headers);
+    ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'RekapOpname');
+    XLSX.writeFile(wb, 'Template_Rekap_Opname.xlsx');
+  }
+
+  function handleRekapFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const firstSheet = wb.Sheets[wb.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
+
+        if (!rawRows || rawRows.length === 0) {
+          showToast('File kosong atau tidak memiliki baris data.', 'warning');
+          clearRekapUploadPreview();
+          return;
+        }
+
+        const keys = Object.keys(rawRows[0]);
+        const colBarcode = findColumnKey(keys, ['barcode', 'kodebarang', 'kode', 'sku', 'ean', 'upc']);
+        const colNama = findColumnKey(keys, ['namabarang', 'namaproduk', 'nama', 'produk', 'item', 'barang', 'deskripsi', 'name']);
+        const colKategori = findColumnKey(keys, ['kategori', 'category', 'jenis', 'grup', 'group']);
+        const colHarga = findColumnKey(keys, ['harga', 'price', 'hargasatuan', 'hpp']);
+        const colQty = findColumnKey(keys, ['qtysistem', 'qty', 'stok', 'stock', 'jumlah']);
+
+        if (!colBarcode) {
+          showToast('Kolom "Barcode" tidak ditemukan! Gunakan file sesuai template Rekap.', 'danger');
+          clearRekapUploadPreview();
+          return;
+        }
+
+        // Map Master Data lokal untuk preview auto-fill kategori/nama
+        const masterMap = {};
+        APP.masterData.forEach(m => { masterMap[m.barcode] = m; });
+
+        const parsed = [];
+        const seen = new Set();
+        let dupCount = 0;
+        let autoKatCount = 0;
+
+        rawRows.forEach(row => {
+          const bc = String(row[colBarcode] || '').trim();
+          if (!bc) return;
+          if (seen.has(bc)) dupCount++;
+          seen.add(bc);
+
+          const m = masterMap[bc] || null;
+          let nama = colNama ? String(row[colNama] || '').trim() : '';
+          let kat = colKategori ? String(row[colKategori] || '').trim() : '';
+          let katFromMaster = false;
+
+          if ((!nama || nama === '-') && m && m.nama_barang && m.nama_barang !== '-') {
+            nama = m.nama_barang;
+          }
+          if ((!kat || kat === '-') && m && m.kategori && m.kategori !== '-') {
+            kat = m.kategori;
+            katFromMaster = true;
+            autoKatCount++;
+          }
+
+          parsed.push({
+            barcode: bc,
+            nama_barang: nama || '-',
+            kategori: kat || '-',
+            katFromMaster: katFromMaster,
+            harga: colHarga ? cleanNumeric(row[colHarga]) : 0,
+            qty_sistem: colQty ? cleanNumeric(row[colQty]) : 0
+          });
+        });
+
+        if (parsed.length === 0) {
+          showToast('Tidak ada barcode valid di dalam file.', 'warning');
+          clearRekapUploadPreview();
+          return;
+        }
+
+        APP.parsedRekapRows = parsed;
+        renderRekapUploadPreview(parsed, dupCount, autoKatCount);
+      } catch (err) {
+        showToast('Gagal membaca file: ' + (err.message || err), 'danger');
+        clearRekapUploadPreview();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function renderRekapUploadPreview(rows, dupCount, autoKatCount) {
+    const box = document.getElementById('rekap-preview-box');
+    const summary = document.getElementById('rekap-preview-summary');
+    const tbody = document.getElementById('rekap-preview-tbody');
+
+    let msg = 'Terbaca <strong>' + rows.length + '</strong> baris produk opname.';
+    if (autoKatCount > 0) {
+      msg += ' <span class="text-success fw-semibold">(' + autoKatCount + ' kategori otomatis diambil dari Master Data)</span>';
+    }
+    if (dupCount > 0) {
+      msg += ' <span class="text-danger fw-bold">(' + dupCount + ' barcode duplikat — baris terakhir yang dipakai)</span>';
+    }
+    summary.innerHTML = msg;
+
+    const slice = rows.slice(0, 100);
+    tbody.innerHTML = slice.map((r, idx) =>
+      '<tr>' +
+        '<td>' + (idx + 1) + '</td>' +
+        '<td class="mono">' + escapeHtml(r.barcode) + '</td>' +
+        '<td>' + escapeHtml(r.nama_barang) + '</td>' +
+        '<td>' + escapeHtml(r.kategori) + (r.katFromMaster ? ' <span class="badge bg-info-subtle text-info border">Master</span>' : '') + '</td>' +
+        '<td class="text-end">' + formatRupiah(r.harga) + '</td>' +
+        '<td class="text-end">' + formatNumber(r.qty_sistem) + '</td>' +
+      '</tr>'
+    ).join('') + (rows.length > 100 ? '<tr><td colspan="6" class="text-center small text-muted">... dan ' + (rows.length - 100) + ' baris lainnya</td></tr>' : '');
+
+    box.classList.remove('d-none');
+  }
+
+  function clearRekapUploadPreview() {
+    APP.parsedRekapRows = [];
+    const inp = document.getElementById('rekap-file-input');
+    if (inp) inp.value = '';
+    document.getElementById('rekap-preview-box').classList.add('d-none');
+    document.getElementById('rekap-preview-tbody').innerHTML = '';
+  }
+
+  async function confirmUploadRekap() {
+    if (!APP.parsedRekapRows.length) return;
+    const mode = document.querySelector('input[name="rekap-upload-mode"]:checked').value;
+
+    showLoader('Mengupload ' + APP.parsedRekapRows.length + ' data Rekap Opname...');
+    try {
+      const payload = APP.parsedRekapRows.map(r => ({
+        barcode: r.barcode,
+        nama_barang: r.nama_barang,
+        kategori: r.kategori,
+        harga: r.harga,
+        qty_sistem: r.qty_sistem
+      }));
+      const res = await callServer('uploadRekapData', payload, mode);
+      if (res.success) {
+        APP.rekap = res.rekap;
+        renderRekapTable();
+        toggleRekapUploadPanel(false);
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err) {
+      showToast('Upload gagal: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function confirmClearRekap() {
+    if (!confirm('Hapus seluruh daftar data Rekap Opname yang sudah diupload?\n\n(Master Data TIDAK ikut terhapus.)')) {
+      return;
+    }
+    showLoader('Menghapus data Rekap Opname...');
+    try {
+      const res = await callServer('clearRekapData', false);
+      if (res.success) {
+        APP.raks = res.raks;
+        APP.rekap = res.rekap;
+        APP.details = res.details;
+        APP.unknowns = res.unknowns;
+        renderAll();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err) {
+      showToast('Gagal menghapus rekap: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function confirmResetOpname() {
+    if (!confirm('Hapus SEMUA hasil scan fisik di rak & log barcode tidak terdaftar?\n\n(Master Data, daftar Rak, dan data upload Rekap tetap aman.)')) {
+      return;
+    }
+    showLoader('Mereset hasil scan...');
+    try {
+      const res = await callServer('resetOpnameSession');
+      if (res.success) {
+        APP.raks = res.raks;
+        APP.rekap = res.rekap;
+        APP.details = res.details;
+        APP.unknowns = res.unknowns;
+        renderAll();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err) {
+      showToast('Gagal reset: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  /* ============================================================
+   * TAB 3: ADMIN & RAK + BARCODE TIDAK TERDAFTAR
+   * ============================================================ */
+
+  async function handleGenerateBulkRak(e) {
+    e.preventDefault();
+    const total = Number(document.getElementById('bulk-rak-total').value);
+    const prefix = document.getElementById('bulk-rak-prefix').value.trim() || 'RAK-';
+    const replace = document.getElementById('bulk-rak-replace').checked;
+
+    if (replace && !confirm('Ganti seluruh daftar rak lama dengan ' + total + ' rak baru?')) {
+      return;
+    }
+
+    showLoader('Membuat ' + total + ' rak...');
+    try {
+      const res = await callServer('generateBulkRaks', total, prefix, replace);
+      if (res.success) {
+        APP.raks = res.raks;
+        renderRakDropdowns();
+        renderAdminRakTable();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal membuat rak: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function handleCreateSingleRak(e) {
+    e.preventDefault();
+    const nameEl = document.getElementById('single-rak-name');
+    const descEl = document.getElementById('single-rak-desc');
+    const nama = nameEl.value.trim();
+    const desc = descEl.value.trim();
+    if (!nama) return;
+
+    showLoader('Menambahkan rak...');
+    try {
+      const res = await callServer('createRak', nama, desc);
+      if (res.success) {
+        APP.raks = res.raks;
+        renderRakDropdowns();
+        renderAdminRakTable();
+        nameEl.value = '';
+        descEl.value = '';
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal menambah rak: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function handleDeleteRak(namaRak) {
+    if (!confirm('Hapus rak "' + namaRak + '"?')) return;
+    showLoader('Menghapus rak...');
+    try {
+      const res = await callServer('deleteRak', namaRak);
+      if (res.success) {
+        APP.raks = res.raks;
+        renderRakDropdowns();
+        renderAdminRakTable();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal menghapus rak: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  function renderAdminRakTable() {
+    const tbody = document.getElementById('admin-rak-tbody');
+    document.getElementById('admin-rak-count').textContent = APP.raks.length + ' Rak';
+
+    if (APP.raks.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Belum ada rak dibuat.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = APP.raks.map((r, idx) =>
+      '<tr>' +
+        '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
+        '<td class="fw-semibold">' + escapeHtml(r.nama_rak) + '</td>' +
+        '<td class="small text-muted">' + escapeHtml(r.deskripsi || '-') + '</td>' +
+        '<td class="text-end">' + formatNumber(r.total_scan) + '</td>' +
+        '<td class="text-end fw-semibold text-primary">' + formatNumber(r.total_qty) + '</td>' +
+        '<td class="text-center pe-3">' +
+          '<button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="handleDeleteRak(' + jsArg(r.nama_rak) + ')" title="Hapus Rak">' +
+            '<i class="bi bi-trash"></i>' +
+          '</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+  }
+
+  function renderUnknownTable() {
+    const tbody = document.getElementById('admin-unknown-tbody');
+    if (APP.unknowns.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Tidak ada barcode yang ditolak.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = APP.unknowns.map((u, idx) =>
+      '<tr>' +
+        '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
+        '<td class="small text-muted text-nowrap">' + escapeHtml(u.timestamp) + '</td>' +
+        '<td class="mono fw-bold text-danger">' + escapeHtml(u.barcode) + '</td>' +
+        '<td><span class="badge bg-light text-dark border">' + escapeHtml(u.rak) + '</span></td>' +
+        '<td class="text-center"><span class="badge bg-warning text-dark">' + u.percobaan + 'x</span></td>' +
+        '<td class="text-end pe-3 text-nowrap">' +
+          '<button class="btn btn-sm btn-success py-0 px-2 me-1" onclick="openApproveUnknownModal(' + jsArg(u.barcode) + ')">' +
+            '<i class="bi bi-plus-circle me-1"></i>Master' +
+          '</button>' +
+          '<button class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="handleDeleteUnknown(' + jsArg(u.barcode) + ')" title="Hapus Log">' +
+            '<i class="bi bi-x-lg"></i>' +
+          '</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+  }
+
+  function openApproveUnknownModal(barcode) {
+    document.getElementById('modalMasterTitle').textContent = 'Tambah Barcode ke Master Data';
+    const bcEl = document.getElementById('modal-m-barcode');
+    bcEl.value = barcode;
+    bcEl.readOnly = true;
+    document.getElementById('modal-m-nama').value = '';
+    document.getElementById('modal-m-kategori').value = '';
+    modalMasterInstance.show();
+    setTimeout(() => document.getElementById('modal-m-nama').focus(), 250);
+  }
+
+  function openEditMasterModal(barcode) {
+    const item = APP.masterData.find(m => m.barcode === barcode);
+    if (!item) return;
+    document.getElementById('modalMasterTitle').textContent = 'Edit Master Data';
+    const bcEl = document.getElementById('modal-m-barcode');
+    bcEl.value = item.barcode;
+    bcEl.readOnly = true;
+    document.getElementById('modal-m-nama').value = item.nama_barang || '';
+    document.getElementById('modal-m-kategori').value = item.kategori || '';
+    modalMasterInstance.show();
+  }
+
+  async function handleSaveModalMaster(e) {
+    e.preventDefault();
+    const payload = {
+      barcode: document.getElementById('modal-m-barcode').value.trim(),
+      nama_barang: document.getElementById('modal-m-nama').value.trim(),
+      kategori: document.getElementById('modal-m-kategori').value.trim() || '-'
+    };
+
+    showLoader('Menyimpan ke Master Data...');
+    try {
+      const res = await callServer('approveUnknownBarcode', payload);
+      if (res.success) {
+        APP.masterData = res.masterData;
+        APP.rekap = res.rekap;
+        APP.unknowns = res.unknowns;
+        renderAll();
+        modalMasterInstance.hide();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err) {
+      showToast('Gagal menyimpan: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function handleDeleteUnknown(barcode) {
+    showLoader('Menghapus log...');
+    try {
+      const res = await callServer('deleteUnknownBarcode', barcode);
+      if (res.success) {
+        APP.unknowns = res.unknowns;
+        renderUnknownTable();
+        updateUnknownBadges();
+        showToast(res.message, 'info');
+      }
+    } catch (err) {
+      showToast('Gagal menghapus: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  /* ============================================================
+   * TAB 4: MASTER DATA (PUSAT PRODUK PERMANEN: BARCODE, NAMA, KATEGORI)
+   * ============================================================ */
+
+  function downloadTemplateMasterExcel() {
+    const headers = [['Barcode', 'Nama Barang', 'Kategori']];
+    const ws = XLSX.utils.aoa_to_sheet(headers);
+    ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 20 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'MasterData');
+    XLSX.writeFile(wb, 'Template_Master_Data.xlsx');
+  }
+
+  function findColumnKey(keys, candidates) {
+    for (const k of keys) {
+      const norm = String(k).trim().toLowerCase().replace(/[_\s-]+/g, '');
+      for (const c of candidates) {
+        if (norm === c || norm.includes(c)) return k;
+      }
+    }
+    return null;
+  }
+
+  function cleanNumeric(val) {
+    if (typeof val === 'number') return isNaN(val) ? 0 : val;
+    if (!val) return 0;
+    let s = String(val).trim().replace(/Rp\.?/gi, '').replace(/\s+/g, '');
+    if (/^\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, '');
+    } else {
+      s = s.replace(/,/g, '');
+    }
+    const n = Number(s);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function handleMasterFileSelect(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array' });
+        const firstSheet = wb.Sheets[wb.SheetNames[0]];
+        const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: '', raw: false });
+
+        if (!rawRows || rawRows.length === 0) {
+          showToast('File kosong atau tidak memiliki baris data.', 'warning');
+          clearUploadPreview();
+          return;
+        }
+
+        const keys = Object.keys(rawRows[0]);
+        const colBarcode = findColumnKey(keys, ['barcode', 'kodebarang', 'kode', 'sku', 'ean', 'upc']);
+        const colNama = findColumnKey(keys, ['namabarang', 'namaproduk', 'nama', 'produk', 'item', 'barang', 'deskripsi', 'name']);
+        const colKategori = findColumnKey(keys, ['kategori', 'category', 'jenis', 'grup', 'group']);
+
+        if (!colBarcode) {
+          showToast('Kolom "Barcode" tidak ditemukan! Gunakan file sesuai template.', 'danger');
+          clearUploadPreview();
+          return;
+        }
+
+        const parsed = [];
+        const seen = new Set();
+        let dupCount = 0;
+
+        rawRows.forEach(row => {
+          const bc = String(row[colBarcode] || '').trim();
+          if (!bc) return;
+          if (seen.has(bc)) dupCount++;
+          seen.add(bc);
+
+          parsed.push({
+            barcode: bc,
+            nama_barang: colNama ? String(row[colNama] || '-').trim() : '-',
+            kategori: colKategori ? String(row[colKategori] || '-').trim() : '-'
+          });
+        });
+
+        if (parsed.length === 0) {
+          showToast('Tidak ada barcode valid di dalam file.', 'warning');
+          clearUploadPreview();
+          return;
+        }
+
+        APP.parsedUploadRows = parsed;
+        renderUploadPreview(parsed, dupCount);
+      } catch (err) {
+        showToast('Gagal membaca file: ' + (err.message || err), 'danger');
+        clearUploadPreview();
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function renderUploadPreview(rows, dupCount) {
+    const box = document.getElementById('upload-preview-box');
+    const summary = document.getElementById('upload-preview-summary');
+    const tbody = document.getElementById('upload-preview-tbody');
+
+    let msg = 'Terbaca <strong>' + rows.length + '</strong> baris valid (mode Tambah / Update).';
+    if (dupCount > 0) {
+      msg += ' <span class="text-danger fw-bold">(' + dupCount + ' barcode duplikat — baris terakhir yang dipakai)</span>';
+    }
+    summary.innerHTML = msg;
+
+    const previewSlice = rows.slice(0, 100);
+    tbody.innerHTML = previewSlice.map((r, idx) =>
+      '<tr>' +
+        '<td>' + (idx + 1) + '</td>' +
+        '<td class="mono">' + escapeHtml(r.barcode) + '</td>' +
+        '<td>' + escapeHtml(r.nama_barang || '-') + '</td>' +
+        '<td>' + escapeHtml(r.kategori || '-') + '</td>' +
+      '</tr>'
+    ).join('') + (rows.length > 100 ? '<tr><td colspan="4" class="text-center small text-muted">... dan ' + (rows.length - 100) + ' baris lainnya</td></tr>' : '');
+
+    box.classList.remove('d-none');
+  }
+
+  function clearUploadPreview() {
+    APP.parsedUploadRows = [];
+    document.getElementById('master-file-input').value = '';
+    document.getElementById('upload-preview-box').classList.add('d-none');
+    document.getElementById('upload-preview-tbody').innerHTML = '';
+  }
+
+  async function confirmUploadMaster() {
+    if (!APP.parsedUploadRows.length) return;
+
+    showLoader('Menyimpan ' + APP.parsedUploadRows.length + ' produk ke Master Data...');
+    try {
+      const res = await callServer('uploadMasterData', APP.parsedUploadRows);
+      if (res.success) {
+        APP.masterData = res.masterData;
+        APP.rekap = res.rekap;
+        APP.unknowns = res.unknowns;
+        renderAll();
+        clearUploadPreview();
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'danger');
+      }
+    } catch (err) {
+      showToast('Upload gagal: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  async function handleQuickAddMaster(e) {
+    e.preventDefault();
+    const payload = {
+      barcode: document.getElementById('quick-barcode').value.trim(),
+      nama_barang: document.getElementById('quick-nama').value.trim(),
+      kategori: document.getElementById('quick-kategori').value.trim() || '-'
+    };
+    if (!payload.barcode) return;
+
+    showLoader('Menyimpan produk ke Master...');
+    try {
+      const res = await callServer('addOrUpdateMasterItem', payload);
+      if (res.success) {
+        APP.masterData = res.masterData;
+        APP.rekap = res.rekap;
+        APP.unknowns = res.unknowns;
+        renderAll();
+        document.getElementById('quick-barcode').value = '';
+        document.getElementById('quick-nama').value = '';
+        document.getElementById('quick-kategori').value = '';
+        showToast(res.message, 'success');
+      } else {
+        showToast(res.message, 'warning');
+      }
+    } catch (err) {
+      showToast('Gagal menyimpan: ' + (err.message || err), 'danger');
+    } finally {
+      hideLoader();
+    }
+  }
+
+  function renderMasterTable() {
+    const tbody = document.getElementById('master-tbody');
+    const q = (document.getElementById('master-search').value || '').trim().toLowerCase();
+
+    document.getElementById('master-total-count').textContent = APP.masterData.length;
+
+    let rows = APP.masterData;
+    if (q) {
+      rows = rows.filter(m =>
+        m.barcode.toLowerCase().includes(q) ||
+        (m.nama_barang || '').toLowerCase().includes(q) ||
+        (m.kategori || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (rows.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Master data kosong atau tidak ditemukan.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = rows.map((m, idx) =>
+      '<tr>' +
+        '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
+        '<td class="mono fw-semibold">' + escapeHtml(m.barcode) + '</td>' +
+        '<td class="fw-semibold">' + escapeHtml(m.nama_barang || '-') + '</td>' +
+        '<td>' + escapeHtml(m.kategori || '-') + '</td>' +
+        '<td class="text-center pe-3 text-nowrap">' +
+          '<button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openEditMasterModal(' + jsArg(m.barcode) + ')" title="Edit">' +
+            '<i class="bi bi-pencil"></i>' +
+          '</button>' +
+        '</td>' +
+      '</tr>'
+    ).join('');
+  }
+</script>
+
+</body>
+</html>
