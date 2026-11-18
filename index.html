@@ -1846,11 +1846,30 @@
     });
   }
 
+  function formatDateTimeDMY(val) {
+    if (!val) return '';
+    const s = String(val).trim();
+    if (/^\d{2}-\d{2}-\d{4}\s+\d{2}:\d{2}/.test(s)) {
+      return s.slice(0, 16);
+    }
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (iso) {
+      return iso[3] + '-' + iso[2] + '-' + iso[1] + ' ' + iso[4] + ':' + iso[5];
+    }
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      const p = n => String(n).padStart(2, '0');
+      return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' +
+             p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    return s;
+  }
+
   function localTimestampNow() {
     const d = new Date();
     const p = n => String(n).padStart(2, '0');
-    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' +
-           p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    return p(d.getDate()) + '-' + p(d.getMonth() + 1) + '-' + d.getFullYear() + ' ' +
+           p(d.getHours()) + ':' + p(d.getMinutes());
   }
 
   /**
@@ -2802,7 +2821,7 @@
     tbody.innerHTML = rows.map((d, idx) =>
       '<tr>' +
         '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
-        '<td class="small text-muted text-nowrap">' + escapeHtml(d.timestamp.slice(11, 19) || d.timestamp) + '</td>' +
+        '<td class="small text-muted text-nowrap">' + escapeHtml(formatDateTimeDMY(d.timestamp)) + '</td>' +
         '<td class="mono fw-semibold">' + escapeHtml(d.barcode) + '</td>' +
         '<td class="fw-semibold">' + escapeHtml(d.nama_barang || '-') + '</td>' +
         '<td class="text-end fw-bold text-primary">' + formatNumber(d.qty_fisik) + '</td>' +
@@ -3088,7 +3107,7 @@
 
     const wb = XLSX.utils.book_new();
 
-    // Sheet 1: Rekap Opname
+    // Sheet 1: Rekap Opname (tanpa kolom Lokasi Rak & Status)
     const sheet1Data = rekapRows.map((r, idx) => ({
       'No': idx + 1,
       'Barcode': String(r.barcode),
@@ -3098,21 +3117,19 @@
       'Qty Sistem': r.qty_sistem,
       'Qty Opname': r.qty_opname,
       'Selisih': r.selisih,
-      'Nilai Selisih': r.nilai_selisih,
-      'Lokasi Rak': r.lokasi_rak,
-      'Status': r.status
+      'Nilai Selisih': r.nilai_selisih
     }));
     const ws1 = XLSX.utils.json_to_sheet(sheet1Data);
     ws1['!cols'] = [
       { wch: 6 }, { wch: 18 }, { wch: 28 }, { wch: 18 }, { wch: 14 },
-      { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 26 }, { wch: 14 }
+      { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }
     ];
     XLSX.utils.book_append_sheet(wb, ws1, 'Rekap Opname');
 
-    // Sheet 2: Detail Scan Per Rak
+    // Sheet 2: Detail Scan Per Rak (format waktu dd-mm-yyyy hh:mm)
     const sheet2Data = APP.details.map((d, idx) => ({
       'No': idx + 1,
-      'Waktu': d.timestamp,
+      'Waktu': formatDateTimeDMY(d.timestamp),
       'Rak': d.rak,
       'Barcode': String(d.barcode),
       'Nama Barang': d.nama_barang || '-',
@@ -3121,26 +3138,14 @@
     }));
     const ws2 = XLSX.utils.json_to_sheet(sheet2Data.length ? sheet2Data : [{ 'Info': 'Belum ada scan' }]);
     ws2['!cols'] = [
-      { wch: 6 }, { wch: 20 }, { wch: 14 }, { wch: 18 },
+      { wch: 6 }, { wch: 18 }, { wch: 14 }, { wch: 18 },
       { wch: 28 }, { wch: 12 }, { wch: 24 }
     ];
     XLSX.utils.book_append_sheet(wb, ws2, 'Detail Per Rak');
 
-    // Sheet 3: Barcode Tidak Terdaftar
-    const sheet3Data = APP.unknowns.map((u, idx) => ({
-      'No': idx + 1,
-      'Waktu': u.timestamp,
-      'Barcode': String(u.barcode),
-      'Rak': u.rak,
-      'Jumlah Percobaan': u.percobaan
-    }));
-    const ws3 = XLSX.utils.json_to_sheet(sheet3Data.length ? sheet3Data : [{ 'Info': 'Tidak ada barcode ditolak' }]);
-    ws3['!cols'] = [{ wch: 6 }, { wch: 20 }, { wch: 18 }, { wch: 14 }, { wch: 16 }];
-    XLSX.utils.book_append_sheet(wb, ws3, 'Tidak Terdaftar');
-
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
-    const fname = 'Hasil_Opname_' + now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
+    const fname = 'Hasil_Opname_' + pad(now.getDate()) + '-' + pad(now.getMonth() + 1) + '-' + now.getFullYear() +
                   '_' + pad(now.getHours()) + pad(now.getMinutes()) + '.xlsx';
 
     XLSX.writeFile(wb, fname);
@@ -3483,7 +3488,7 @@
     tbody.innerHTML = APP.unknowns.map((u, idx) =>
       '<tr>' +
         '<td class="ps-3 text-muted">' + (idx + 1) + '</td>' +
-        '<td class="small text-muted text-nowrap">' + escapeHtml(u.timestamp) + '</td>' +
+        '<td class="small text-muted text-nowrap">' + escapeHtml(formatDateTimeDMY(u.timestamp)) + '</td>' +
         '<td class="mono fw-bold text-danger">' + escapeHtml(u.barcode) + '</td>' +
         '<td><span class="badge bg-light text-dark border">' + escapeHtml(u.rak) + '</span></td>' +
         '<td class="text-center"><span class="badge bg-warning text-dark">' + u.percobaan + 'x</span></td>' +
