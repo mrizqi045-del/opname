@@ -559,6 +559,10 @@
                     <i class="bi bi-stop-circle-fill fs-5"></i>
                     <span>Matikan Kamera</span>
                   </button>
+                  <button class="btn btn-outline-warning text-dark btn-lg d-none align-items-center justify-content-center px-3"
+                          id="btn-torch" onclick="toggleCameraTorch()" title="Lampu Flash">
+                    <i class="bi bi-lightning-charge-fill"></i>
+                  </button>
 
                   <input type="file" id="mobile-camera-input" accept="image/*" capture="environment"
                          class="d-none" onchange="handleCameraPhotoScan(event)">
@@ -576,12 +580,15 @@
                   Gunakan tombol biru <strong>Scan Kamera HP</strong> di atas — bisa langsung pakai kamera belakang HP tanpa blokir.
                 </div>
 
-                <div id="scanner-wrapper" class="mb-3 d-none">
+                <div id="scanner-wrapper" class="mb-2 d-none">
                   <div id="qr-reader"></div>
                   <div class="scanner-placeholder" id="scanner-placeholder">
                     <i class="bi bi-upc-scan display-5 d-block mb-2"></i>
                     <div class="small">Kamera live sedang disiapkan...</div>
                   </div>
+                </div>
+                <div id="scanner-live-status" class="small text-success fw-semibold text-center mb-3 d-none">
+                  <i class="bi bi-record-circle-fill me-1"></i>Kamera aktif — arahkan langsung ke barcode (otomatis scan)
                 </div>
 
                 <!-- Input Manual / USB Scanner -->
@@ -1203,6 +1210,8 @@
     parsedRekapRows: [],
     html5QrCode: null,
     cameraRunning: false,
+    cameraPaused: false,
+    torchOn: false,
     isCheckingBarcode: false,
     lastScannedCode: '',
     lastScannedAt: 0,
@@ -1540,6 +1549,11 @@
 
     renderScanHistory();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    // Di GitHub Pages (HTTPS standalone), otomatis buka Live Kamera begitu masuk ke rak
+    if (!IS_GAS && !APP.cameraRunning) {
+      setTimeout(() => startCameraScanner(), 200);
+    }
   }
 
   function exitRakWorkspace() {
@@ -1692,6 +1706,44 @@
     }
   }
 
+  function pauseCameraIfRunning() {
+    if (APP.html5QrCode && APP.cameraRunning && !APP.cameraPaused) {
+      try {
+        APP.html5QrCode.pause(true);
+        APP.cameraPaused = true;
+        const st = document.getElementById('scanner-live-status');
+        if (st) st.innerHTML = '<i class="bi bi-pause-circle-fill me-1 text-warning"></i>Kamera dijeda sementara — masukkan Qty lalu Simpan';
+      } catch (e) {}
+    }
+  }
+
+  function resumeCameraIfPaused() {
+    if (APP.html5QrCode && APP.cameraRunning && APP.cameraPaused) {
+      try {
+        APP.html5QrCode.resume();
+        APP.cameraPaused = false;
+        const st = document.getElementById('scanner-live-status');
+        if (st) st.innerHTML = '<i class="bi bi-record-circle-fill me-1"></i>Kamera aktif — arahkan langsung ke barcode (otomatis scan)';
+      } catch (e) {}
+    }
+  }
+
+  async function toggleCameraTorch() {
+    if (!APP.html5QrCode || !APP.cameraRunning) return;
+    try {
+      const next = !APP.torchOn;
+      await APP.html5QrCode.applyVideoConstraints({ advanced: [{ torch: next }] });
+      APP.torchOn = next;
+      const btn = document.getElementById('btn-torch');
+      if (btn) {
+        btn.classList.toggle('btn-warning', next);
+        btn.classList.toggle('btn-outline-warning', !next);
+      }
+    } catch (e) {
+      showToast('Lampu flash tidak didukung di kamera ini.', 'info');
+    }
+  }
+
   async function startCameraScanner() {
     if (!APP.selectedRak) {
       showToast('Pilih rak terlebih dahulu sebelum membuka kamera.', 'warning');
@@ -1702,6 +1754,7 @@
     const wrapper = document.getElementById('scanner-wrapper');
     const placeholder = document.getElementById('scanner-placeholder');
     const hint = document.getElementById('camera-iframe-hint');
+    const statusEl = document.getElementById('scanner-live-status');
     hint.classList.add('d-none');
     wrapper.classList.remove('d-none');
     placeholder.classList.add('d-none');
@@ -1715,19 +1768,24 @@
         });
       }
 
-      const wrapperW = wrapper.clientWidth || 300;
-      const boxW = Math.min(300, Math.max(200, Math.floor(wrapperW * 0.84)));
-      const boxH = Math.min(160, Math.max(105, Math.floor(boxW * 0.52)));
-
       const config = {
         fps: 12,
-        qrbox: { width: boxW, height: boxH },
-        formatsToSupport: BARCODE_FORMATS
+        qrbox: function(viewfinderWidth, viewfinderHeight) {
+          const w = Math.max(200, Math.floor(viewfinderWidth * 0.90));
+          const h = Math.max(110, Math.floor(Math.min(viewfinderHeight * 0.55, 210)));
+          return { width: w, height: h };
+        },
+        formatsToSupport: BARCODE_FORMATS,
+        videoConstraints: {
+          facingMode: 'environment',
+          width: { min: 640, ideal: 1280, max: 1920 },
+          height: { min: 480, ideal: 720, max: 1080 }
+        }
       };
 
       const onDecoded = (decodedText) => {
         const now = Date.now();
-        if (APP.isCheckingBarcode) return;
+        if (APP.isCheckingBarcode || APP.cameraPaused) return;
         if (decodedText === APP.lastScannedCode && (now - APP.lastScannedAt) < 1800) {
           return;
         }
@@ -1740,25 +1798,50 @@
       try {
         await APP.html5QrCode.start({ facingMode: 'environment' }, config, onDecoded, () => {});
       } catch (envErr) {
-        const cameras = await Html5Qrcode.getCameras();
-        if (!cameras || cameras.length === 0) {
-          throw envErr;
+        // Fallback tanpa videoConstraints tinggi jika kamera HP menolak resolusi ideal
+        const simpleConfig = {
+          fps: 10,
+          qrbox: function(vw, vh) {
+            return { width: Math.max(180, Math.floor(vw * 0.88)), height: Math.max(100, Math.floor(Math.min(vh * 0.52, 190))) };
+          },
+          formatsToSupport: BARCODE_FORMATS
+        };
+        try {
+          await APP.html5QrCode.start({ facingMode: 'environment' }, simpleConfig, onDecoded, () => {});
+        } catch (envErr2) {
+          const cameras = await Html5Qrcode.getCameras();
+          if (!cameras || cameras.length === 0) {
+            throw envErr2;
+          }
+          const backCam = cameras.find(c => /back|rear|belakang|environment/i.test(c.label || '')) || cameras[cameras.length - 1];
+          await APP.html5QrCode.start(backCam.id, simpleConfig, onDecoded, () => {});
         }
-        await APP.html5QrCode.start(cameras[0].id, config, onDecoded, () => {});
       }
 
       APP.cameraRunning = true;
+      APP.cameraPaused = false;
+      APP.torchOn = false;
       document.getElementById('btn-start-camera').classList.add('d-none');
       document.getElementById('btn-stop-camera').classList.remove('d-none');
+      if (statusEl) {
+        statusEl.innerHTML = '<i class="bi bi-record-circle-fill me-1"></i>Kamera aktif — arahkan langsung ke barcode (otomatis scan)';
+        statusEl.classList.remove('d-none');
+      }
       if (!IS_GAS) {
         const liveBtn = document.getElementById('btn-live-primary');
         const stopBtn = document.getElementById('btn-stop-primary');
+        const torchBtn = document.getElementById('btn-torch');
         if (liveBtn) { liveBtn.classList.add('d-none'); liveBtn.classList.remove('d-flex'); }
         if (stopBtn) { stopBtn.classList.remove('d-none'); stopBtn.classList.add('d-flex'); }
+        if (torchBtn) {
+          torchBtn.classList.remove('d-none', 'btn-warning');
+          torchBtn.classList.add('d-flex', 'btn-outline-warning');
+        }
       }
     } catch (err) {
       wrapper.classList.add('d-none');
       placeholder.classList.remove('d-none');
+      if (statusEl) statusEl.classList.add('d-none');
       const errMsg = String((err && err.message) || err || '');
       if (IS_GAS && /denied|notallowed|permission/i.test(errMsg)) {
         hint.classList.remove('d-none');
@@ -1778,17 +1861,23 @@
       // Abaikan error saat stop
     }
     APP.cameraRunning = false;
+    APP.cameraPaused = false;
+    APP.torchOn = false;
     if (IS_GAS) {
       document.getElementById('btn-start-camera').classList.remove('d-none');
     } else {
       const liveBtn = document.getElementById('btn-live-primary');
       const stopBtn = document.getElementById('btn-stop-primary');
+      const torchBtn = document.getElementById('btn-torch');
       if (liveBtn) { liveBtn.classList.remove('d-none'); liveBtn.classList.add('d-flex'); }
       if (stopBtn) { stopBtn.classList.add('d-none'); stopBtn.classList.remove('d-flex'); }
+      if (torchBtn) { torchBtn.classList.add('d-none'); torchBtn.classList.remove('d-flex'); }
     }
     document.getElementById('btn-stop-camera').classList.add('d-none');
     document.getElementById('scanner-wrapper').classList.add('d-none');
     document.getElementById('scanner-placeholder').classList.remove('d-none');
+    const statusEl = document.getElementById('scanner-live-status');
+    if (statusEl) statusEl.classList.add('d-none');
   }
 
   function handleManualBarcodeSubmit(e) {
@@ -1861,6 +1950,7 @@
         }
       } else {
         // Mode input manual qty (blind scan: tampilkan Barcode + Nama Barang saja)
+        pauseCameraIfRunning();
         APP.activeScanItem = res.item;
         document.getElementById('found-barcode').textContent = res.item.barcode;
         document.getElementById('found-nama-barang').textContent = res.item.nama_barang || '-';
@@ -1945,7 +2035,9 @@
 
   function resetFoundBox() {
     APP.activeScanItem = null;
+    APP.lastScannedCode = '';
     document.getElementById('scan-found-box').classList.add('d-none');
+    resumeCameraIfPaused();
   }
 
   function renderScanHistory() {
