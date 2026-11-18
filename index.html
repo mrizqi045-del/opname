@@ -1346,6 +1346,25 @@
     </div>
   </div>
 
+  <!-- ======================================================= -->
+  <!-- MODAL: KONFIRMASI CUSTOM (AMAN DI GOOGLE SITES IFRAME)  -->
+  <!-- ======================================================= -->
+  <div class="modal fade" id="modalConfirm" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h6 class="modal-title fw-bold" id="confirm-title">Konfirmasi</h6>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body small" id="confirm-message" style="white-space: pre-line;"></div>
+        <div class="modal-footer py-2">
+          <button type="button" class="btn btn-sm btn-light" id="confirm-btn-cancel" data-bs-dismiss="modal">Batal</button>
+          <button type="button" class="btn btn-sm btn-danger" id="confirm-btn-ok">Ya, Lanjutkan</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Mobile Bottom Navigation Bar -->
   <nav class="mobile-bottom-nav d-md-none" id="mobile-tabs">
     <button class="m-nav-btn active" data-tab="scan" onclick="switchTab('scan')">
@@ -1411,6 +1430,7 @@
   let modalMasterInstance = null;
   let modalEditScanInstance = null;
   let modalChangePasswordInstance = null;
+  let modalConfirmInstance = null;
 
   /* ============================================================
    * INISIALISASI, AUTH LOGIN, & SERVER BRIDGE
@@ -1420,6 +1440,7 @@
     modalMasterInstance = new bootstrap.Modal(document.getElementById('modalMasterItem'));
     modalEditScanInstance = new bootstrap.Modal(document.getElementById('modalEditScan'));
     modalChangePasswordInstance = new bootstrap.Modal(document.getElementById('modalChangePassword'));
+    modalConfirmInstance = new bootstrap.Modal(document.getElementById('modalConfirm'));
 
     // Jika berjalan di GitHub Pages (standalone HTTPS), jadikan Live Kamera tombol utama
     if (!IS_GAS) {
@@ -1564,11 +1585,68 @@
     }
   }
 
+  /**
+   * Modal konfirmasi custom (pengganti window.confirm agar 100% jalan di Google Sites iframe!)
+   */
+  function askConfirm(title, message, okLabel, okClass) {
+    return new Promise((resolve) => {
+      const modalEl = document.getElementById('modalConfirm');
+      const okBtn = document.getElementById('confirm-btn-ok');
+      document.getElementById('confirm-title').textContent = title || 'Konfirmasi';
+      document.getElementById('confirm-message').textContent = message || 'Lanjutkan?';
+      okBtn.textContent = okLabel || 'Ya, Lanjutkan';
+      okBtn.className = 'btn btn-sm ' + (okClass || 'btn-danger');
+
+      let resolved = false;
+      const cleanup = () => {
+        okBtn.removeEventListener('click', onOk);
+        modalEl.removeEventListener('hidden.bs.modal', onHidden);
+      };
+      const onOk = () => {
+        resolved = true;
+        cleanup();
+        modalConfirmInstance.hide();
+        resolve(true);
+      };
+      const onHidden = () => {
+        cleanup();
+        if (!resolved) resolve(false);
+      };
+
+      okBtn.addEventListener('click', onOk);
+      modalEl.addEventListener('hidden.bs.modal', onHidden);
+      modalConfirmInstance.show();
+    });
+  }
+
+  function downloadWorkbookSafe(wb, filename) {
+    try {
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        a.remove();
+        URL.revokeObjectURL(url);
+      }, 1000);
+    } catch (e) {
+      XLSX.writeFile(wb, filename);
+    }
+  }
+
   async function handleLogout() {
     if (APP.syncQueue.length > 0) {
-      if (!confirm('Masih ada ' + APP.syncQueue.length + ' scan dalam antrean simpan. Yakin keluar sekarang?')) {
-        return;
-      }
+      const ok = await askConfirm(
+        'Antrean Belum Tersimpan',
+        'Masih ada ' + APP.syncQueue.length + ' scan dalam antrean simpan. Yakin keluar sekarang?',
+        'Tetap Keluar',
+        'btn-danger'
+      );
+      if (!ok) return;
     }
     const token = APP.auth && APP.auth.token;
     if (APP.cameraRunning) await stopCameraScanner();
@@ -2895,7 +2973,8 @@
   }
 
   async function deleteScanEntry(idScan) {
-    if (!confirm('Hapus baris scan ini?')) return;
+    const ok = await askConfirm('Hapus Scan', 'Hapus baris scan ini?', 'Hapus', 'btn-danger');
+    if (!ok) return;
 
     // Jika masih di antrean lokal belum terkirim, langsung hapus instan
     const qIdx = APP.syncQueue.findIndex(q => q.id_scan === idScan);
@@ -3148,7 +3227,7 @@
     const fname = 'Hasil_Opname_' + pad(now.getDate()) + '-' + pad(now.getMonth() + 1) + '-' + now.getFullYear() +
                   '_' + pad(now.getHours()) + pad(now.getMinutes()) + '.xlsx';
 
-    XLSX.writeFile(wb, fname);
+    downloadWorkbookSafe(wb, fname);
     showToast('File Excel berhasil didownload: ' + fname, 'success');
   }
 
@@ -3170,7 +3249,7 @@
     ws['!cols'] = [{ wch: 18 }, { wch: 28 }, { wch: 18 }, { wch: 12 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'RekapOpname');
-    XLSX.writeFile(wb, 'Template_Rekap_Opname.xlsx');
+    downloadWorkbookSafe(wb, 'Template_Rekap_Opname.xlsx');
   }
 
   function handleRekapFileSelect(event) {
@@ -3326,9 +3405,13 @@
   }
 
   async function confirmClearRekap() {
-    if (!confirm('Hapus seluruh daftar data Rekap Opname yang sudah diupload?\n\n(Master Data TIDAK ikut terhapus.)')) {
-      return;
-    }
+    const ok = await askConfirm(
+      'Hapus Data Rekap',
+      'Hapus seluruh daftar data Rekap Opname yang sudah diupload?\n\nMaster Data TIDAK ikut terhapus.',
+      'Ya, Hapus Rekap',
+      'btn-danger'
+    );
+    if (!ok) return;
     showLoader('Menghapus data Rekap Opname...');
     try {
       const res = await callServer('clearRekapData', false);
@@ -3350,9 +3433,13 @@
   }
 
   async function confirmResetOpname() {
-    if (!confirm('Hapus SEMUA hasil scan fisik di rak & log barcode tidak terdaftar?\n\n(Master Data, daftar Rak, dan data upload Rekap tetap aman.)')) {
-      return;
-    }
+    const ok = await askConfirm(
+      'Reset Hasil Scan',
+      'Hapus SEMUA hasil scan fisik di rak & log barcode tidak terdaftar?\n\nMaster Data, daftar Rak, dan data upload Rekap tetap aman.',
+      'Ya, Reset Scan',
+      'btn-warning'
+    );
+    if (!ok) return;
     showLoader('Mereset hasil scan...');
     try {
       const res = await callServer('resetOpnameSession');
@@ -3383,8 +3470,14 @@
     const prefix = document.getElementById('bulk-rak-prefix').value.trim() || 'RAK-';
     const replace = document.getElementById('bulk-rak-replace').checked;
 
-    if (replace && !confirm('Ganti seluruh daftar rak lama dengan ' + total + ' rak baru?')) {
-      return;
+    if (replace) {
+      const ok = await askConfirm(
+        'Ganti Daftar Rak',
+        'Ganti seluruh daftar rak lama dengan ' + total + ' rak baru?',
+        'Ya, Ganti',
+        'btn-danger'
+      );
+      if (!ok) return;
     }
 
     showLoader('Membuat ' + total + ' rak...');
@@ -3434,7 +3527,8 @@
   }
 
   async function handleDeleteRak(namaRak) {
-    if (!confirm('Hapus rak "' + namaRak + '"?')) return;
+    const ok = await askConfirm('Hapus Rak', 'Hapus rak "' + namaRak + '"?', 'Hapus', 'btn-danger');
+    if (!ok) return;
     showLoader('Menghapus rak...');
     try {
       const res = await callServer('deleteRak', namaRak);
@@ -3582,7 +3676,7 @@
     ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'MasterData');
-    XLSX.writeFile(wb, 'Template_Master_Data.xlsx');
+    downloadWorkbookSafe(wb, 'Template_Master_Data.xlsx');
   }
 
   function findColumnKey(keys, candidates) {
@@ -3879,7 +3973,8 @@
 
   async function handleDeleteUserAccount(username) {
     if (!isAdminOrAbove()) return;
-    if (!confirm('Hapus akun "' + username + '"?')) return;
+    const ok = await askConfirm('Hapus Akun', 'Hapus akun "' + username + '"?', 'Hapus', 'btn-danger');
+    if (!ok) return;
     showLoader('Menghapus akun...');
     try {
       const res = await callServer('deleteUserAccount', APP.auth.token, username);
@@ -3902,7 +3997,13 @@
       showToast('Hanya Superadmin yang dapat menghapus Master Data.', 'danger');
       return;
     }
-    if (!confirm('Hapus produk "' + barcode + '" dari Daftar Master Produk?')) return;
+    const ok = await askConfirm(
+      'Hapus Produk Master',
+      'Hapus produk "' + barcode + '" dari Daftar Master Produk?',
+      'Hapus',
+      'btn-danger'
+    );
+    if (!ok) return;
     showLoader('Menghapus produk dari Master...');
     try {
       const res = await callServer('deleteMasterItem', barcode, APP.auth.token);
