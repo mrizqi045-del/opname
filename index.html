@@ -708,8 +708,8 @@
                                id="scan-qty-input" min="0" step="any" value="1" required>
                       </div>
                       <div class="col-7">
-                        <label class="form-label small fw-semibold mb-1">Keterangan (opsional)</label>
-                        <input type="text" class="form-control form-control-lg" id="scan-ket-input" placeholder="Catatan...">
+                        <label class="form-label small fw-semibold mb-1">Expired</label>
+                        <input type="date" class="form-control form-control-lg" id="scan-exp-input">
                       </div>
                     </div>
                     <div class="d-flex gap-2 mt-3">
@@ -745,7 +745,7 @@
                         <th>Barcode</th>
                         <th>Nama Barang</th>
                         <th class="text-end">Qty Fisik</th>
-                        <th>Ket</th>
+                        <th>Expired</th>
                         <th class="text-center pe-3">Aksi</th>
                       </tr>
                     </thead>
@@ -1302,8 +1302,8 @@
               <input type="number" class="form-control fw-bold" id="edit-scan-qty" min="0" step="any" required>
             </div>
             <div class="mb-1">
-              <label class="form-label small fw-semibold">Keterangan</label>
-              <input type="text" class="form-control" id="edit-scan-ket">
+              <label class="form-label small fw-semibold">Expired</label>
+              <input type="date" class="form-control" id="edit-scan-exp">
             </div>
           </div>
           <div class="modal-footer">
@@ -1941,6 +1941,29 @@
              p(d.getHours()) + ':' + p(d.getMinutes());
     }
     return s;
+  }
+
+  function formatIsoToDMY(val) {
+    if (!val) return '';
+    const s = String(val).trim();
+    if (/^\d{2}-\d{2}-\d{4}$/.test(s)) return s;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) return s.replace(/\//g, '-');
+    const match = s.match(/^(\d{4})[-/](\d{2})[-/](\d{2})/);
+    if (match) {
+      return match[3] + '-' + match[2] + '-' + match[1];
+    }
+    return s;
+  }
+
+  function formatDMYToIso(val) {
+    if (!val) return '';
+    const s = String(val).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const match = s.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
+    if (match) {
+      return match[3] + '-' + match[2] + '-' + match[1];
+    }
+    return '';
   }
 
   function localTimestampNow() {
@@ -2815,7 +2838,8 @@
       document.getElementById('found-barcode').textContent = foundItem.barcode;
       document.getElementById('found-nama-barang').textContent = foundItem.nama_barang || '-';
       document.getElementById('scan-qty-input').value = 1;
-      document.getElementById('scan-ket-input').value = '';
+      const expInput = document.getElementById('scan-exp-input') || document.getElementById('scan-ket-input');
+      if (expInput) expInput.value = '';
       document.getElementById('scan-found-box').classList.remove('d-none');
 
       const qtyEl = document.getElementById('scan-qty-input');
@@ -2836,7 +2860,9 @@
     if (!APP.activeScanItem || !APP.selectedRak) return;
 
     const qty = Number(document.getElementById('scan-qty-input').value);
-    const ket = document.getElementById('scan-ket-input').value.trim();
+    const expInput = document.getElementById('scan-exp-input') || document.getElementById('scan-ket-input');
+    const rawVal = expInput ? expInput.value.trim() : '';
+    const exp = formatIsoToDMY(rawVal);
 
     if (isNaN(qty) || qty < 0) {
       showToast('Qty fisik harus angka >= 0.', 'warning');
@@ -2846,7 +2872,7 @@
     // SIMPAN INSTAN 0 ms (tanpa loading modal!), kamera langsung nyala lagi siap scan berikutnya!
     const item = APP.activeScanItem;
     playBeep('ok');
-    enqueueScanSave(item, qty, ket);
+    enqueueScanSave(item, qty, exp);
     showToast('Tersimpan: ' + item.nama_barang + ' (+' + qty + ')', 'success');
     resetFoundBox();
     const bcInput = document.getElementById('scan-barcode-input');
@@ -2903,7 +2929,7 @@
         '<td class="mono fw-semibold">' + escapeHtml(d.barcode) + '</td>' +
         '<td class="fw-semibold">' + escapeHtml(d.nama_barang || '-') + '</td>' +
         '<td class="text-end fw-bold text-primary">' + formatNumber(d.qty_fisik) + '</td>' +
-        '<td class="small text-muted">' + escapeHtml(d.keterangan || '-') + '</td>' +
+        '<td class="small text-muted text-nowrap">' + escapeHtml(d.keterangan || '-') + '</td>' +
         '<td class="text-center pe-3 text-nowrap">' +
           '<button class="btn btn-sm btn-outline-primary py-0 px-2 me-1" onclick="openEditScanModal(' + jsArg(d.id_scan) + ')" title="Edit Qty">' +
             '<i class="bi bi-pencil"></i>' +
@@ -2924,7 +2950,10 @@
     document.getElementById('edit-scan-id').value = item.id_scan;
     document.getElementById('edit-scan-info').textContent = item.rak + ' • ' + item.barcode + ' — ' + (item.nama_barang || item.kategori);
     document.getElementById('edit-scan-qty').value = item.qty_fisik;
-    document.getElementById('edit-scan-ket').value = item.keterangan || '';
+    const expEl = document.getElementById('edit-scan-exp') || document.getElementById('edit-scan-ket');
+    if (expEl) {
+      expEl.value = formatDMYToIso(item.keterangan || '');
+    }
     modalEditScanInstance.show();
   }
 
@@ -2932,7 +2961,9 @@
     e.preventDefault();
     const id = document.getElementById('edit-scan-id').value;
     const qty = Number(document.getElementById('edit-scan-qty').value);
-    const ket = document.getElementById('edit-scan-ket').value.trim();
+    const expEl = document.getElementById('edit-scan-exp') || document.getElementById('edit-scan-ket');
+    const rawVal = expEl ? expEl.value.trim() : '';
+    const ket = formatIsoToDMY(rawVal);
 
     // Update langsung di antrean jika belum sempat terkirim ke server
     const queued = APP.syncQueue.find(q => q.id_scan === id);
@@ -3213,7 +3244,7 @@
       'Barcode': String(d.barcode),
       'Nama Barang': d.nama_barang || '-',
       'Qty Fisik': d.qty_fisik,
-      'Keterangan': d.keterangan
+      'Expired': d.keterangan || ''
     }));
     const ws2 = XLSX.utils.json_to_sheet(sheet2Data.length ? sheet2Data : [{ 'Info': 'Belum ada scan' }]);
     ws2['!cols'] = [
